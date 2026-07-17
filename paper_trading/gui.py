@@ -52,7 +52,8 @@ class NavChartWidget(QWidget):
         import matplotlib
         matplotlib.use("QtAgg")
         matplotlib.rcParams["font.sans-serif"] = [
-            "PingFang SC", "Heiti SC", "STHeiti", "Arial Unicode MS", "DejaVu Sans"]
+            "Microsoft YaHei", "SimHei", "PingFang SC", "Heiti SC", "STHeiti",
+            "Arial Unicode MS", "DejaVu Sans"]
         matplotlib.rcParams["axes.unicode_minus"] = False
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
         from matplotlib.figure import Figure
