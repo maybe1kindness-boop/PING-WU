@@ -7,6 +7,7 @@ from trading.backtest_engine import BacktestEngine
 from trading.backtest_batch_queue import BacktestBatchQueue
 from utils.db_manager import DBManager
 from utils.akshare_fetcher import AKShareFetcher
+from utils.paths import get_data_dir, data_path
 from utils.strategy_name_mapper import get_english_name
 from utils.strategy_config_manager import StrategyConfigManager
 import logging
@@ -23,7 +24,7 @@ trading_bp = Blueprint('trading', __name__, url_prefix='/api/trading')
 backtest_dao = BacktestDAO()
 from utils.global_db import get_global_db
 db_manager = get_global_db()
-akshare_fetcher = AKShareFetcher("data")
+akshare_fetcher = AKShareFetcher(get_data_dir())
 
 
 @trading_bp.route('/backtest/configs', methods=['GET'])
@@ -411,7 +412,7 @@ def list_batch_backtest():
     try:
         from pathlib import Path
 
-        batch_queue_dir = Path("data/backtest_batch")
+        batch_queue_dir = data_path("backtest_batch")
         batches = []
 
         if batch_queue_dir.exists():

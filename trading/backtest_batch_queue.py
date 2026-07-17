@@ -14,8 +14,9 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# 数据目录
-DATA_DIR = Path("data")
+# 数据目录（统一走 utils.paths 解析）
+from utils.paths import get_data_dir, data_path
+DATA_DIR = Path(get_data_dir())
 BATCH_QUEUE_DIR = DATA_DIR / "backtest_batch"
 BATCH_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -307,12 +308,12 @@ class BacktestBatchQueue:
             except Exception as e:
                 logger.warning(f"批量回测读取海龟策略配置失败，使用默认参数: {str(e)}")
 
-        engine = BacktestEngine(db_path="data/stock_selection.db")
+        engine = BacktestEngine(db_path=str(data_path("stock_selection.db")))
         result = engine.run_backtest(strategy_name, config)
 
         # 保存结果到数据库
         try:
-            backtest_dao = BacktestDAO(db_path="data/stock_selection.db")
+            backtest_dao = BacktestDAO(db_path=str(data_path("stock_selection.db")))
 
             # 计算final_capital
             final_capital = config.get('initial_capital', 300000)

@@ -16,7 +16,8 @@ env/
 .vscode/
 .idea/
 
-# Logs
+# Logs（运行时日志统一存放于 runtime/logs）
+runtime/logs/
 logs/*.log
 
 # OS
@@ -30,8 +31,16 @@ reports/
 .env
 .env.local
 
-# KHunter 运行时数据（数据库/缓存，不提交）
-data/*.db
-data/*.db-shm
-data/*.db-wal
-data/trade_dates.json
+# KHunter 运行时生成内容（统一存放于 runtime/，不提交）
+# 注意：runtime/data/*.sql 为建表源码脚本，需保留在 git，故不在此忽略
+runtime/data/*.db
+runtime/data/*.db-shm
+runtime/data/*.db-wal
+runtime/data/*.json
+runtime/data/cache/
+runtime/data/akshare_cache/
+runtime/data/risk_cache/
+runtime/data/hmm_model/
+runtime/data/running/
+runtime/data/backtest_batch/
+runtime/data/backups/

@@ -12,12 +12,14 @@ import os
 from datetime import datetime, time as dtime
 from typing import Optional
 
+from utils.paths import data_path
+
 logger = logging.getLogger(__name__)
 
 
 class TradeCalendar:
-    def __init__(self, cache_path: str = "data/trade_dates.json"):
-        self.cache_path = cache_path
+    def __init__(self, cache_path: str = None):
+        self.cache_path = cache_path or str(data_path("trade_dates.json"))
         self._dates: Optional[set] = None
         self._fallback = False
 

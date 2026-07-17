@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class BacktestDAO:
     """回测数据访问对象"""
     
-    def __init__(self, db_path: str = "data/stock_selection.db"):
+    def __init__(self, db_path: str = None):  # db_path 未使用，回测走全局库 get_global_db()
         """
         初始化回测数据访问对象
         

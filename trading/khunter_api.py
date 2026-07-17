@@ -307,8 +307,9 @@ class KHunterAPI:
             # 3. 导入必要的模块
             from utils.akshare_fetcher import AKShareFetcher
             from utils.ranking_manager import RankingManager
+            from utils.paths import get_data_dir
             
-            akshare_fetcher = AKShareFetcher("data")
+            akshare_fetcher = AKShareFetcher(get_data_dir())
             ranking_manager = RankingManager()
             
             # 4. 处理全部跟踪数据

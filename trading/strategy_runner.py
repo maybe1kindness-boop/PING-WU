@@ -18,6 +18,7 @@ from scipy import stats
 
 from utils.db_manager import DBManager
 from utils.akshare_fetcher import AKShareFetcher
+from utils.paths import get_data_dir, data_path
 from strategy.strategy_registry import StrategyRegistry
 from trading.stock_score_api import calculate_stock_score
 
@@ -42,7 +43,7 @@ _strategy_run_lock = threading.Lock()
 _signal_execution_lock = threading.Lock()
 
 # 股票池持久化文件路径
-POOL_PERSIST_FILE = "data/running/buy_candidate_pool.json"
+POOL_PERSIST_FILE = str(data_path("running", "buy_candidate_pool.json"))
 
 
 def calculate_trading_cost(stock_code: str, price: float, quantity: int, is_buy: bool, config: dict) -> dict:
@@ -147,13 +148,13 @@ class StrategyRunner:
             **kwargs: 关键字参数
         """
         # 从参数中获取db_path，默认值为"data/stock_selection.db"
-        db_path = kwargs.get('db_path', "data/stock_selection.db")
+        db_path = kwargs.get('db_path') or str(data_path("stock_selection.db"))
         if args:
             db_path = args[0]
         
         from utils.global_db import get_global_db
         self.db_manager = get_global_db()
-        self.akshare_fetcher = AKShareFetcher("data")
+        self.akshare_fetcher = AKShareFetcher(get_data_dir())
         self.strategy_registry = StrategyRegistry()
         # 自动注册所有策略
         self.strategy_registry.auto_register_from_directory()
@@ -194,7 +195,7 @@ class StrategyRunner:
         self.signals = []
         
         # 确保运行目录存在（使用绝对路径）
-        self.running_dir = Path(__file__).resolve().parent.parent / "data/running"
+        self.running_dir = Path(__file__).resolve().parent.parent / get_data_dir() / "running"
         self.running_dir.mkdir(exist_ok=True)
         
         self.take_profit_threshold = self.config.get('take_profit_threshold', 0.21)

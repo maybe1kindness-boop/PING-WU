@@ -46,7 +46,8 @@ class QuantSystem:
     def __init__(self, config_file="config/config.yaml"):
         # 初始化日志系统
         from utils.log_config import LogConfig
-        LogConfig.setup_logging()
+        from utils.paths import get_logs_dir
+        LogConfig.setup_logging(log_dir=get_logs_dir())
         
         self.config = self._load_config(config_file)
         self.data_dir = self.config.get('data_dir', 'data')

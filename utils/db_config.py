@@ -10,6 +10,7 @@ import yaml
 import logging
 from pathlib import Path
 from typing import Optional
+from utils.paths import data_path
 
 logger = logging.getLogger(__name__)
 
@@ -48,20 +49,20 @@ class DatabaseConfig:
         return {
             'database': {
                 'type': 'sqlite',
-                'path': 'data/stock_selection.db',
+                'path': str(data_path("stock_selection.db")),
                 'name': 'stock_selection',
                 'timeout': 30,
                 'foreign_keys': True,
                 'wal_mode': True
             },
             'initialization': {
-                'sql_script': 'data/DataSql.sql',
+                'sql_script': str(data_path("DataSql.sql")),
                 'auto_init': True,
-                'init_data_script': 'data/InitData.sql'
+                'init_data_script': str(data_path("InitData.sql"))
             },
             'backup': {
                 'enabled': False,
-                'directory': 'data/backups',
+                'directory': str(data_path("backups")),
                 'frequency': 24
             }
         }

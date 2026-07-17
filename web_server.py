@@ -137,9 +137,10 @@ socketio = SocketIO(
 # ==================== 日志配置 ====================
 # 使用新的日志配置模块
 from utils.log_config import LogConfig, get_logger
+from utils.paths import get_data_dir, get_logs_dir
 
 # 初始化日志系统
-LogConfig.setup_logging(log_dir="logs", log_file="app.log")
+LogConfig.setup_logging(log_dir=get_logs_dir(), log_file="app.log")
 
 # 获取应用日志记录器
 logger = get_logger(__name__)
@@ -150,7 +151,7 @@ logger.info("=" * 60)
 
 # 初始化数据库（确保所有表都已创建）
 logger.info("初始化数据库...")
-init_databases_if_needed()
+init_databases_if_needed(get_data_dir())
 logger.info("数据库初始化完成")
 
 # 检查并添加缺失的数据库列
@@ -170,11 +171,11 @@ registry = get_registry("config/strategy_params.yaml")
 selection_record_manager = SelectionRecordManager()
 ranking_manager = RankingManager()
 stock_analyzer = StockAnalyzer()
-data_collection_service = get_data_collection_service("data")
+data_collection_service = get_data_collection_service(get_data_dir())
 
 # 初始化K线初始化器
 from utils.akshare_fetcher import AKShareFetcher
-akshare_fetcher = AKShareFetcher("data")
+akshare_fetcher = AKShareFetcher(get_data_dir())
 kline_initializer = KlineInitializer(db_manager, akshare_fetcher)
 
 # 初始化参数锁定机制
@@ -1208,7 +1209,7 @@ def run_selection():
             try:
                 # 初始化CSV管理器
                 from utils.csv_manager import CSVManager
-                csv_manager = CSVManager('data')
+                csv_manager = CSVManager(get_data_dir())
                 
                 # 初始化B1完美图形库
                 from strategy.pattern_library import B1PatternLibrary
@@ -4214,7 +4215,8 @@ def run_web_server(host='0.0.0.0', port=5000, debug=False):
     """启动Web服务器"""
     # 初始化日志系统
     from utils.log_config import LogConfig
-    LogConfig.setup_logging()
+    from utils.paths import get_logs_dir
+    LogConfig.setup_logging(log_dir=get_logs_dir())
     
     # 打印所有注册的路由
     print("\n注册的路由:")

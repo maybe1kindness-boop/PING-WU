@@ -7,18 +7,19 @@ import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 import logging
+from utils.paths import data_path
 
 class CacheManager:
     """缓存管理器"""
     
-    def __init__(self, cache_dir="data/cache"):
+    def __init__(self, cache_dir=None):
         """
         初始化缓存管理器
         
         参数：
             cache_dir: 缓存目录路径
         """
-        self.cache_dir = Path(cache_dir)
+        self.cache_dir = Path(cache_dir) if cache_dir else data_path("cache")
         self.cache_dir.mkdir(exist_ok=True, parents=True)
         self.logger = logging.getLogger("cache_manager")
         self.logger.info(f"缓存管理器初始化完成，缓存目录: {self.cache_dir}")

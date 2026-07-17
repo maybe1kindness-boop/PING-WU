@@ -171,7 +171,8 @@ class HMMMarketStateDetector:
             model_dir: 模型存储目录
         """
         self.config = HMMConfig(config_path)
-        self.model_dir = model_dir or 'data/hmm_model'
+        from utils.paths import data_path
+        self.model_dir = model_dir or str(data_path("hmm_model"))
         self.feature_calculator = HMMFeatureCalculator()
         self.model = None
         self.last_train_date = None

@@ -4,7 +4,7 @@
 # 说明：此文件由 config.yaml.template 生成
 # 不要提交此文件到Git仓库（已加入.gitignore）
 
-data_dir: data
+data_dir: runtime/data
 
 # 钉钉机器人配置
 # 1. 在钉钉群中添加自定义机器人
@@ -47,6 +47,8 @@ trading:
 
 # 盘中实时模拟盘配置（paper_trading 模块）
 paper_trading:
+  # 模拟盘数据库（统一存放于 runtime/data，与 KHunter 库隔离）
+  db_path: runtime/data/paper_trading.db
   # 盘中轮询间隔（分钟）
   poll_interval_minutes: 2
   # 单票最大仓位（占总资产）

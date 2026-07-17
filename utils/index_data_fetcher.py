@@ -7,6 +7,7 @@ import numpy as np
 import logging
 from pathlib import Path
 from typing import Optional, Tuple
+from utils.paths import data_path
 from datetime import datetime, timedelta
 from io import StringIO
 from utils.cache_manager import CacheManager
@@ -28,14 +29,14 @@ INDEX_NAME_MAP = {
 class IndexDataFetcher:
     """指数数据获取器 - 获取指数历史数据"""
     
-    def __init__(self, cache_dir: str = 'data/risk_cache'):
+    def __init__(self, cache_dir: str = None):
         """
         初始化指数数据获取器
         
         参数：
             cache_dir: 缓存目录路径
         """
-        self.cache_dir = Path(cache_dir)
+        self.cache_dir = Path(cache_dir) if cache_dir else data_path("risk_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_manager = CacheManager(str(self.cache_dir))
         

@@ -6,6 +6,7 @@ from typing import Optional
 from datetime import datetime
 from pathlib import Path
 
+from utils.paths import data_path
 from utils.index_data_fetcher import IndexDataFetcher
 from utils.var_calculator import EnhancedVaRCalculator
 from utils.risk_manager import RiskManager, RiskStatus
@@ -275,7 +276,7 @@ class RiskController:
     def _load_risk_history(self):
         """从文件加载历史风控状态"""
         try:
-            history_file = Path('data/risk_history.json')
+            history_file = data_path("risk_history.json")
             if history_file.exists():
                 import json
                 with open(history_file, 'r', encoding='utf-8') as f:
@@ -305,7 +306,7 @@ class RiskController:
     def save_risk_history(self):
         """保存历史风控状态到文件"""
         try:
-            history_file = Path('data/risk_history.json')
+            history_file = data_path("risk_history.json")
             history_file.parent.mkdir(parents=True, exist_ok=True)
             
             # 转换为字典列表

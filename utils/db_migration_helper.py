@@ -9,20 +9,22 @@ import sqlite3
 import logging
 from pathlib import Path
 
+from utils.paths import data_path
+
 logger = logging.getLogger(__name__)
 
 
 class DatabaseMigrationHelper:
     """数据库迁移助手"""
     
-    def __init__(self, db_path: str = 'data/stock_selection.db'):
+    def __init__(self, db_path: str = None):
         """
         初始化迁移助手
         
         Args:
             db_path: 数据库文件路径
         """
-        self.db_path = db_path
+        self.db_path = db_path or str(data_path("stock_selection.db"))
     
     def check_and_add_khunter_score_date_column(self) -> bool:
         """
@@ -225,7 +227,7 @@ class DatabaseMigrationHelper:
         logger.info("=" * 60)
 
 
-def ensure_database_schema(db_path: str = 'data/stock_selection.db') -> bool:
+def ensure_database_schema(db_path: str = None) -> bool:
     """
     确保数据库模式正确
     
@@ -235,7 +237,7 @@ def ensure_database_schema(db_path: str = 'data/stock_selection.db') -> bool:
     Returns:
         bool: 如果所有检查都通过则返回 True
     """
-    helper = DatabaseMigrationHelper(db_path)
+    helper = DatabaseMigrationHelper(db_path or str(data_path("stock_selection.db")))
     
     # 检查并添加 score_date 列
     success = helper.check_and_add_khunter_score_date_column()

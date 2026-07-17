@@ -17,15 +17,16 @@ import os
 import yaml
 from datetime import datetime
 from pathlib import Path
+from utils.paths import data_path
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # 默认反馈文件目录（相对于项目根目录）
-DEFAULT_FEEDBACK_DIR = "data/running/ptrade_feedback"
+DEFAULT_FEEDBACK_DIR = str(data_path("running", "ptrade_feedback"))
 
 # 默认运行数据目录
-DEFAULT_RUNNING_DIR = "data/running"
+DEFAULT_RUNNING_DIR = str(data_path("running"))
 
 # 默认初始资金
 DEFAULT_INITIAL_CAPITAL = 300000.0

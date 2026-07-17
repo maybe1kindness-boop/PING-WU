@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict
 
+from utils.paths import data_path
+
 
 @dataclass
 class FeeConfig:
@@ -46,7 +48,7 @@ class PaperConfig:
     use_spot_em: bool = True                # 优先 ak.stock_zh_a_spot_em 全市场
     spot_min_interval_sec: float = 3.0      # spot_em 最小请求间隔（反爬）
     # 存储
-    db_path: str = "data/paper_trading.db"
+    db_path: str = field(default_factory=lambda: str(data_path("paper_trading.db")))
     # 费率
     fee: FeeConfig = field(default_factory=FeeConfig)
 

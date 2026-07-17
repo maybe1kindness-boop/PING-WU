@@ -21,6 +21,7 @@ import requests
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
+from utils.paths import data_path
 from typing import Any, Callable, Optional
 
 # 日志配置
@@ -46,13 +47,13 @@ class AkshareCache:
     缓存内容: DataFrame 转 JSON 存储，附带时间戳
     """
 
-    def __init__(self, cache_dir: str = "data/akshare_cache"):
+    def __init__(self, cache_dir: str = None):
         """初始化缓存管理器
         
         Args:
             cache_dir: 缓存文件存储目录
         """
-        self.cache_dir = Path(cache_dir)
+        self.cache_dir = Path(cache_dir) if cache_dir else data_path("akshare_cache")
         # 确保缓存目录存在
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 

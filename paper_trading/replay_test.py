@@ -27,7 +27,9 @@ from paper_trading.signal_engine import SignalEngine
 
 
 def run(code: str | None = None, initial: float = 100000.0,
-        db_path: str = "data/_replay.db", verbose: bool = True):
+        db_path: str = None, verbose: bool = True):
+    from utils.paths import data_path
+    db_path = db_path or str(data_path("_replay.db"))
     db = get_global_db()
     codes = db.list_all_stocks()
     if not codes:

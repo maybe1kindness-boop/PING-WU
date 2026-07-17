@@ -17,6 +17,7 @@ from typing import List, Dict, Tuple
 
 from utils.db_manager import DBManager
 from utils.akshare_fetcher import AKShareFetcher
+from utils.paths import get_data_dir, data_path
 from strategy.strategy_registry import StrategyRegistry
 from trading.stock_score_api import calculate_stock_score
 from trading.backtest_scorer import BacktestScoreCalculator
@@ -92,13 +93,13 @@ class BacktestEngine:
             **kwargs: 关键字参数
         """
         # 从参数中获取db_path，默认值为"data/stock_selection.db"
-        db_path = kwargs.get('db_path', "data/stock_selection.db")
+        db_path = kwargs.get('db_path') or str(data_path("stock_selection.db"))
         if args:
             db_path = args[0]
         
         from utils.global_db import get_global_db
         self.db_manager = get_global_db()
-        self.akshare_fetcher = AKShareFetcher("data")
+        self.akshare_fetcher = AKShareFetcher(get_data_dir())
         self.strategy_registry = StrategyRegistry()
         # 初始化K线数据获取器
         from utils.stock_data_fetcher import StockDataFetcher
