@@ -1,0 +1,1376 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QuantPilot · 量化交易工作台</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --ink: #17231f;
+      --muted: #75817b;
+      --line: #e6eae5;
+      --panel: #ffffff;
+      --canvas: #f5f7f4;
+      --sidebar: #17231f;
+      --sidebar-muted: #9eaaa3;
+      --green: #16835f;
+      --green-soft: #e5f4ec;
+      --red: #cc5d50;
+      --red-soft: #fff0ed;
+      --orange: #b97820;
+      --orange-soft: #fff4de;
+      --blue: #3974c5;
+      --blue-soft: #eaf2ff;
+      --shadow: 0 7px 25px rgba(34, 50, 42, .055);
+      --radius: 9px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #e8ece8;
+      font: 14px/1.5 Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+      min-width: 1200px;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .app-shell {
+      position: relative;
+      display: flex;
+      width: min(1440px, calc(100vw - 32px));
+      height: min(900px, calc(100vh - 32px));
+      min-height: 760px;
+      margin: 16px auto;
+      overflow: hidden;
+      border: 1px solid #dce3dd;
+      border-radius: 12px;
+      background: var(--canvas);
+      box-shadow: 0 18px 60px rgba(38, 53, 45, .13), 0 2px 7px rgba(38, 53, 45, .06);
+    }
+
+    .sidebar {
+      position: absolute;
+      z-index: 3;
+      inset: 0 auto 0 0;
+      width: 234px;
+      color: #f4f7f4;
+      background: var(--sidebar);
+      display: flex;
+      flex-direction: column;
+      padding: 25px 16px 18px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 0 9px 28px; }
+    .brand-mark {
+      width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center;
+      background: #d9f3e5; color: var(--sidebar);
+    }
+    .brand-mark svg { width: 19px; height: 19px; stroke-width: 2.5; }
+    .brand-name { font-weight: 760; letter-spacing: .1px; }
+    .brand-sub { color: #87958e; font-size: 11px; margin-top: 1px; }
+    .nav-label { color: #718079; font-size: 11px; letter-spacing: .08em; padding: 12px 11px 8px; }
+    .nav-list { display: grid; gap: 4px; }
+    .nav-item {
+      border: 0; color: var(--sidebar-muted); background: transparent; border-radius: 7px;
+      text-align: left; width: 100%; display: flex; gap: 11px; align-items: center;
+      padding: 10px 11px; transition: .18s ease;
+    }
+    .nav-item svg { width: 17px; height: 17px; }
+    .nav-item:hover { color: #fff; background: rgba(255,255,255,.07); }
+    .nav-item.active { color: #effaf4; background: #285343; box-shadow: inset 3px 0 var(--green); }
+    .nav-item .nav-count { margin-left: auto; font-size: 11px; color: #c4e6d3; background: rgba(255,255,255,.1); border-radius: 10px; padding: 1px 7px; }
+    .settings-subnav { display: none; gap: 3px; margin: -1px 0 5px 28px; padding-left: 11px; border-left: 1px solid rgba(255,255,255,.14); }
+    .settings-subnav.open { display: grid; }
+    .settings-subnav button { border: 0; color: #89988f; background: transparent; border-radius: 5px; text-align: left; padding: 7px 9px; font-size: 11px; }
+    .settings-subnav button svg { width: 14px; height: 14px; margin-right: 5px; vertical-align: -3px; }
+    .settings-subnav button:hover { color: #fff; background: rgba(255,255,255,.07); }
+    .settings-subnav button.active { color: #c9efda; background: rgba(40,83,67,.72); }
+    .settings-chevron { margin-left: auto; width: 14px !important; }
+    .sidebar-spacer { flex: 1; }
+    .system-status { margin: 0 5px 16px; padding: 12px; border: 1px solid rgba(255,255,255,.11); border-radius: 8px; color: #9fafa6; font-size: 11px; }
+    .status-row { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; color: #d9e5dd; }
+    .status-dot { width: 7px; height: 7px; background: #5fd495; border-radius: 50%; box-shadow: 0 0 0 3px rgba(95,212,149,.12); }
+    .profile { border-top: 1px solid rgba(255,255,255,.1); padding: 17px 8px 0; display: flex; align-items: center; gap: 9px; }
+    .profile-button { width: 100%; border: 0; border-top: 1px solid rgba(255,255,255,.1); border-radius: 0; color: inherit; background: transparent; text-align: left; }
+    .profile-button:hover { background: rgba(255,255,255,.06); }
+    .avatar { width: 30px; height: 30px; border-radius: 50%; background: #e7b478; color: #603a18; display: grid; place-items: center; font-weight: 750; font-size: 12px; }
+    .profile-name { font-size: 12px; color: #f0f4f0; }
+    .profile-role { font-size: 11px; color: #819087; }
+    .profile svg { margin-left: auto; width: 15px; color: #7f8e86; }
+    .profile-menu { position: absolute; z-index: 4; left: 16px; right: 16px; bottom: 67px; display: none; padding: 6px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: #24352d; box-shadow: 0 12px 30px rgba(0,0,0,.22); }
+    .profile-menu.open { display: grid; gap: 2px; }
+    .profile-menu button { border: 0; border-radius: 5px; color: #cbd8d0; background: transparent; padding: 8px 9px; text-align: left; font-size: 11px; }
+    .profile-menu button svg { width: 14px; height: 14px; margin-right: 6px; vertical-align: -3px; }
+    .profile-menu button:hover { color: #fff; background: rgba(255,255,255,.08); }
+    .profile-menu button.danger { color: #f0aaa1; }
+
+    .main { margin-left: 234px; width: calc(100% - 234px); min-width: 0; height: 100%; overflow: auto; }
+    .topbar { height: 72px; background: rgba(255,255,255,.84); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; padding: 0 34px; position: sticky; top: 0; z-index: 2; backdrop-filter: blur(12px); }
+    .breadcrumb { color: var(--muted); font-size: 12px; }
+    .breadcrumb strong { color: var(--ink); font-size: 16px; margin-left: 9px; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .market-time { color: var(--muted); font-size: 12px; margin-right: 9px; }
+    .icon-btn, .ghost-btn, .primary-btn { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 7px; min-height: 34px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: .18s ease; }
+    .icon-btn { width: 34px; padding: 0; }
+    .icon-btn svg { width: 16px; }
+    .ghost-btn:hover, .icon-btn:hover { border-color: #b7c5bc; background: #fbfcfb; }
+    .primary-btn { color: #fff; background: var(--green); border-color: var(--green); font-weight: 650; }
+    .primary-btn:hover { background: #116d4f; }
+    .main-content { max-width: 1480px; margin: 0 auto; padding: 28px 34px 50px; }
+    .page-hidden { display: none !important; }
+    .page-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 18px; margin-bottom: 22px; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; }
+    .heading-note { color: var(--muted); margin-top: 6px; }
+    .heading-actions { display: flex; gap: 9px; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 15px; }
+    .stat-card, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .stat-card { padding: 17px 18px; min-height: 123px; position: relative; overflow: hidden; }
+    .stat-card:after { content: ""; position: absolute; width: 54px; height: 54px; right: -9px; bottom: -16px; border-radius: 50%; background: var(--green-soft); opacity: .8; }
+    .stat-label { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 7px; }
+    .stat-label svg { width: 15px; height: 15px; color: var(--green); }
+    .stat-value { font-size: 27px; font-weight: 750; margin-top: 9px; letter-spacing: -.035em; }
+    .stat-value.positive { color: var(--green); }
+    .stat-value.warning { color: var(--orange); }
+    .stat-value.neutral { color: var(--blue); }
+    .stat-footer { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; margin-top: 5px; }
+    .trend-up { color: var(--green); font-weight: 650; }
+
+    .grid-hero { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(325px, .85fr); gap: 15px; margin-bottom: 15px; }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 17px 19px 14px; border-bottom: 1px solid var(--line); }
+    .panel-title { font-size: 15px; font-weight: 720; }
+    .panel-subtitle { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .panel-body { padding: 18px 19px; }
+    .chart-panel { min-height: 319px; }
+    .chart-toolbar { display: flex; align-items: center; gap: 4px; }
+    .chart-tab { border: 0; background: transparent; color: var(--muted); padding: 4px 8px; border-radius: 5px; font-size: 11px; }
+    .chart-tab.active { color: var(--green); background: var(--green-soft); font-weight: 650; }
+    .chart-wrap { height: 210px; position: relative; margin-top: 4px; }
+    .chart-grid { position: absolute; inset: 10px 0 26px; display: grid; grid-template-rows: repeat(4, 1fr); }
+    .chart-grid span { border-top: 1px dashed #e8eeea; }
+    .chart-svg { position: absolute; inset: 10px 0 19px; width: 100%; height: calc(100% - 19px); overflow: visible; }
+    .chart-axis { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; color: #9aa59f; font-size: 10px; }
+    .chart-legend { display: flex; gap: 16px; color: var(--muted); font-size: 11px; margin-top: 6px; }
+    .legend-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 4px; }
+    .legend-dot.blue { background: var(--blue); }
+
+    .signal-panel { min-height: 319px; }
+    .signal-total { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; }
+    .signal-total strong { font-size: 28px; letter-spacing: -.03em; }
+    .signal-total span { color: var(--muted); font-size: 11px; }
+    .signal-list { display: grid; gap: 12px; }
+    .signal-item { display: grid; grid-template-columns: 31px 1fr auto; align-items: center; gap: 10px; }
+    .signal-icon { width: 31px; height: 31px; border-radius: 7px; display: grid; place-items: center; }
+    .signal-icon svg { width: 16px; }
+    .signal-icon.green { background: var(--green-soft); color: var(--green); }
+    .signal-icon.orange { background: var(--orange-soft); color: var(--orange); }
+    .signal-icon.blue { background: var(--blue-soft); color: var(--blue); }
+    .signal-name { font-weight: 620; font-size: 12px; }
+    .signal-desc { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .signal-num { font-weight: 730; font-size: 14px; }
+
+    .section-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, .85fr); gap: 15px; margin-top: 15px; }
+    .filter-panel { scroll-margin-top: 88px; }
+    .filter-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .search-box { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 7px; height: 34px; padding: 0 9px; background: #fff; min-width: 190px; }
+    .search-box svg { width: 15px; color: #9aa59f; flex: 0 0 auto; }
+    .search-box input { width: 100%; border: 0; outline: 0; padding-left: 7px; color: var(--ink); background: transparent; }
+    .search-box input::placeholder { color: #a3ada7; }
+    .filter-body { padding: 16px 19px 19px; }
+    .filter-row { display: grid; grid-template-columns: 62px 1fr; gap: 13px; align-items: start; padding: 9px 0; border-bottom: 1px solid #f0f2ef; }
+    .filter-row:last-of-type { border-bottom: 0; }
+    .filter-label { color: var(--muted); font-size: 12px; padding-top: 5px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+    .chip { border: 1px solid var(--line); color: #59665e; background: #fff; border-radius: 5px; padding: 4px 10px; font-size: 11px; transition: .15s ease; }
+    .chip:hover { border-color: #b7cabe; }
+    .chip.selected { color: var(--green); background: var(--green-soft); border-color: #bde4ce; font-weight: 650; }
+    .filter-footer { padding-top: 15px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .filter-summary { color: var(--muted); font-size: 11px; }
+    .filter-summary strong { color: var(--ink); }
+    .code-strategy-panel { margin-top: 15px; scroll-margin-top: 88px; }
+    .code-strategy-panel .panel-header { padding-bottom: 17px; }
+    .code-strategy-body { padding: 19px; }
+    .code-strategy-panel .code-filter { display: block; padding: 0; }
+    .code-strategy-panel .code-filter-label { display: block; padding: 0; margin-bottom: 8px; color: var(--ink); font-size: 13px; font-weight: 700; }
+    .code-strategy-panel .code-editor-shell { min-height: 300px; }
+    .code-strategy-panel .code-editor { min-height: 260px; padding: 16px 17px; font-size: 13px; line-height: 1.75; }
+    .code-strategy-panel .code-editor-footer { min-height: 42px; padding: 6px 10px; }
+    .code-strategy-panel .code-editor-actions .ghost-btn { min-height: 31px; padding: 0 11px; font-size: 11px; }
+    .code-strategy-panel .code-templates, .code-strategy-panel .code-menu-status { display: none; }
+    #code-strategy .filter-results { margin-top: 20px; padding-top: 0; border-top: 0; }
+    .strategy-pool-zone { margin-top: 19px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .strategy-pool-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+    .strategy-pool-heading .panel-title { display: flex; align-items: center; gap: 7px; }
+    .strategy-pool-heading .panel-title svg { width: 16px; height: 16px; color: var(--green); }
+    .strategy-pool-heading .panel-subtitle { margin-top: 2px; }
+    .strategy-pool-layout { display: grid; grid-template-columns: minmax(250px, .75fr) minmax(0, 1.25fr); gap: 14px; }
+    .strategy-pool-list { display: grid; gap: 6px; align-content: start; }
+    .strategy-pool-item { display: grid; grid-template-columns: 27px 1fr auto; gap: 8px; align-items: center; width: 100%; border: 1px solid #edf1ed; border-radius: 6px; padding: 9px; color: var(--ink); background: #fbfdfb; text-align: left; }
+    .strategy-pool-item:hover { border-color: #b9d7c4; background: #f5fbf7; }
+    .strategy-pool-item.active { border-color: #b8dfc7; background: var(--green-soft); box-shadow: inset 3px 0 var(--green); }
+    .strategy-pool-icon { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 5px; color: var(--green); background: #d4efdf; }
+    .strategy-pool-icon svg { width: 14px; height: 14px; }
+    .strategy-pool-name { font-size: 11px; font-weight: 700; }
+    .strategy-pool-meta { color: var(--muted); font-size: 9px; margin-top: 2px; }
+    .strategy-pool-count { color: var(--green); font-size: 12px; font-weight: 750; text-align: right; }
+    .strategy-pool-count small { display: block; color: var(--muted); font-size: 9px; font-weight: 400; }
+    .stock-pool-preview { min-width: 0; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+    .stock-pool-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; border-bottom: 1px solid var(--line); }
+    .stock-pool-header strong { font-size: 12px; }
+    .stock-pool-header span { color: var(--muted); font-size: 10px; }
+    .stock-pool-table { width: 100%; border-collapse: collapse; }
+    .stock-pool-table th { padding: 7px 10px; font-size: 10px; }
+    .stock-pool-table td { padding: 8px 10px; font-size: 11px; }
+    .stock-pool-table .stock-name { font-size: 11px; }
+    .stock-pool-empty { padding: 18px; color: var(--muted); text-align: center; font-size: 11px; }
+    .backtest-panel { margin-top: 15px; scroll-margin-top: 88px; }
+    .backtest-toolbar { display: grid; grid-template-columns: 1.15fr .9fr 1fr auto; gap: 12px; align-items: end; padding: 18px 19px; border-bottom: 1px solid var(--line); background: #fbfcfb; }
+    .backtest-field label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+    .backtest-field input, .backtest-field select { width: 100%; height: 35px; border: 1px solid var(--line); border-radius: 6px; padding: 0 9px; outline: 0; color: var(--ink); background: #fff; }
+    .backtest-field input:focus, .backtest-field select:focus { border-color: #91bba4; box-shadow: 0 0 0 3px var(--green-soft); }
+    .range-tabs { display: flex; gap: 5px; }
+    .range-tab { height: 35px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--muted); padding: 0 10px; font-size: 11px; }
+    .range-tab.active { color: var(--green); border-color: #bde4ce; background: var(--green-soft); font-weight: 700; }
+    .backtest-config { display: grid; grid-template-columns: 1.1fr .9fr; gap: 15px; padding: 15px 19px; border-bottom: 1px solid var(--line); }
+    .backtest-config-card { border: 1px solid var(--line); border-radius: 7px; padding: 14px; }
+    .backtest-config-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 11px; font-size: 12px; font-weight: 700; }
+    .backtest-pool-toolbar { display: flex; gap: 8px; align-items: center; }
+    .backtest-pool-toolbar select { flex: 1; min-width: 0; height: 34px; border: 1px solid var(--line); border-radius: 6px; padding: 0 8px; color: var(--ink); background: #fff; }
+    .backtest-pool-toolbar select:focus { outline: 0; border-color: #91bba4; box-shadow: 0 0 0 3px var(--green-soft); }
+    .backtest-pool-list { display: flex; flex-wrap: wrap; gap: 7px; min-height: 31px; margin-top: 10px; }
+    .backtest-pool-item { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #bde4ce; border-radius: 5px; padding: 5px 7px 5px 9px; color: var(--green); background: var(--green-soft); font-size: 11px; }
+    .backtest-pool-item button { display: grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; color: var(--green); background: transparent; }
+    .backtest-pool-item button:hover { color: var(--red); }
+    .backtest-pool-item svg { width: 13px; height: 13px; }
+    .backtest-pool-empty, .backtest-pool-note { color: var(--muted); font-size: 11px; }
+    .backtest-pool-note { display: block; margin-top: 9px; }
+    .timing-list { display: grid; gap: 8px; }
+    .timing-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #59665e; font-size: 11px; }
+    .timing-row select { width: 150px; height: 29px; border: 1px solid var(--line); border-radius: 5px; padding: 0 7px; color: var(--ink); background: #fff; }
+    .backtest-metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 15px 19px; }
+    .backtest-metric { padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+    .backtest-metric label { display: block; color: var(--muted); font-size: 10px; }
+    .backtest-metric strong { display: block; margin-top: 4px; font-size: 20px; letter-spacing: -.03em; }
+    .backtest-results-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 19px 12px; }
+    .backtest-results-header span { color: var(--muted); font-size: 11px; }
+    .backtest-chart { height: 130px; margin: 0 19px 16px; border: 1px solid #edf1ed; border-radius: 7px; background: #fbfdfb; position: relative; overflow: hidden; }
+    .backtest-chart svg { position: absolute; inset: 10px 12px 18px; width: calc(100% - 24px); height: calc(100% - 28px); }
+    .backtest-chart-axis { position: absolute; left: 12px; right: 12px; bottom: 4px; display: flex; justify-content: space-between; color: #9aa59f; font-size: 9px; }
+    .backtest-chart-grid { position: absolute; inset: 10px 12px 18px; display: grid; grid-template-rows: repeat(3, 1fr); }
+    .backtest-chart-grid span { border-top: 1px dashed #e8eeea; }
+    .backtest-status { color: var(--muted); font-size: 11px; }
+    .code-filter { display: grid; grid-template-columns: 62px 1fr; gap: 10px; align-items: start; padding: 12px 0 3px; }
+    .code-filter-label { color: var(--muted); font-size: 12px; padding-top: 8px; }
+    .code-editor-shell { min-width: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #f9fbf9; }
+    .code-editor { display: block; width: 100%; min-height: 96px; resize: vertical; border: 0; outline: 0; padding: 10px 12px; color: #30473b; background: #f9fbf9; font: 12px/1.65 "SFMono-Regular", Consolas, monospace; }
+    .code-editor:focus { box-shadow: inset 0 0 0 1px #91bba4; }
+    .code-editor-footer { min-height: 34px; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 8px; border-top: 1px solid var(--line); background: #fff; }
+    .code-editor-hint { color: var(--muted); font-size: 10px; }
+    .code-editor-actions { display: flex; gap: 6px; }
+    .code-editor-actions .ghost-btn { min-height: 27px; padding: 0 8px; font-size: 10px; }
+    .filter-results { border-top: 1px solid var(--line); margin-top: 15px; padding-top: 15px; }
+    .result-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 9px; }
+    .result-heading strong { font-size: 12px; }
+    .result-heading span { color: var(--muted); font-size: 10px; }
+    .batch-tools { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    .batch-tools .ghost-btn { min-height: 29px; padding: 0 8px; font-size: 10px; }
+    .batch-group { height: 29px; border: 1px solid var(--line); border-radius: 5px; padding: 0 7px; color: var(--ink); background: #fff; font-size: 10px; }
+    .batch-count { color: var(--muted); font-size: 10px; white-space: nowrap; }
+    .result-list { display: grid; gap: 7px; }
+    .filter-result-row { display: grid; grid-template-columns: 20px minmax(150px, 1fr) auto minmax(215px, auto); gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid #edf1ed; border-radius: 6px; background: #fbfdfb; }
+    .result-select { width: 15px; height: 15px; accent-color: var(--green); }
+    .result-stock { display: flex; align-items: center; gap: 8px; }
+    .result-stock .stock-name { font-size: 11px; }
+    .result-stock .stock-code { font-size: 9px; }
+    .result-signal { color: var(--muted); font-size: 10px; white-space: nowrap; }
+    .result-signal strong { color: var(--green); margin-left: 5px; }
+    .result-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+    .group-select, .row-group { height: 30px; border: 1px solid var(--line); border-radius: 5px; color: #59665e; background: #fff; padding: 0 7px; font-size: 10px; outline: 0; }
+    .group-select:focus, .row-group:focus { border-color: #91bba4; box-shadow: 0 0 0 3px var(--green-soft); }
+    .add-filter-stock { min-height: 30px; padding: 0 9px; font-size: 11px; }
+    .result-actions .add-filter-stock.added { color: var(--green); border-color: #bde4ce; background: var(--green-soft); }
+
+    .strategy-list { display: grid; gap: 11px; }
+    .strategy-row { display: grid; grid-template-columns: 25px 1fr auto; gap: 10px; align-items: center; padding-bottom: 11px; border-bottom: 1px solid #f0f2ef; }
+    .strategy-row:last-child { border-bottom: 0; padding-bottom: 0; }
+    .strategy-check { width: 16px; height: 16px; accent-color: var(--green); }
+    .strategy-name { font-size: 12px; font-weight: 650; }
+    .strategy-meta { display: flex; gap: 8px; margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .strategy-return { text-align: right; color: var(--green); font-weight: 730; font-size: 13px; }
+    .strategy-return small { display: block; color: var(--muted); font-size: 10px; font-weight: 400; }
+    .strategy-edit { width: 28px; min-height: 28px; padding: 0; margin-left: 4px; box-shadow: none; }
+    .strategy-edit svg { width: 14px; }
+    .strategy-filter-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; margin-top: 13px; border-top: 1px solid var(--line); }
+    .strategy-filter-summary { color: var(--muted); font-size: 10px; }
+    .strategy-filter-summary strong { color: var(--ink); }
+    .strategy-filter-btn { min-height: 30px; padding: 0 9px; font-size: 11px; }
+    .progress { height: 4px; background: #edf1ed; border-radius: 4px; margin-top: 6px; overflow: hidden; }
+    .progress span { display: block; height: 100%; background: var(--green); border-radius: 4px; }
+
+    .condition-strategy-panel { margin-top: 15px; scroll-margin-top: 88px; }
+    .condition-strategy-body { padding: 19px; }
+    .condition-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+    .condition-name { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .condition-name label { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .condition-name input { width: 220px; height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; color: var(--ink); outline: 0; background: #fff; font-weight: 650; }
+    .condition-name input:focus, .condition-control select:focus, .condition-control input:focus { border-color: #91bba4; box-shadow: 0 0 0 3px var(--green-soft); }
+    .condition-status { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 11px; white-space: nowrap; }
+    .condition-status .status-dot { width: 6px; height: 6px; }
+    .condition-layout { display: grid; grid-template-columns: 1.15fr .85fr; gap: 15px; }
+    .condition-layout[data-section] { grid-template-columns: minmax(0, 1fr); }
+    .condition-layout[data-section="mapping"] > .condition-block:not(#conditionMappingBlock),
+    .condition-layout[data-section="buy"] > .condition-block:not(#buyConditionBlock),
+    .condition-layout[data-section="sell"] > .condition-block:not(#sellConditionBlock) { display: none; }
+    .condition-block { border: 1px solid var(--line); border-radius: 7px; min-width: 0; }
+    .condition-block-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 13px 15px; border-bottom: 1px solid var(--line); }
+    .condition-block-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 720; }
+    .condition-block-title svg { width: 16px; height: 16px; color: var(--green); }
+    .condition-block-subtitle { color: var(--muted); font-size: 10px; margin-top: 2px; }
+    .condition-block-body { padding: 14px 15px; }
+    .condition-control { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; align-items: center; padding: 7px 0; }
+    .condition-control > label { color: var(--muted); font-size: 11px; }
+    .condition-control select, .condition-control input { width: 100%; height: 32px; border: 1px solid var(--line); border-radius: 5px; padding: 0 8px; color: var(--ink); background: #fff; outline: 0; font-size: 11px; }
+    .condition-control input[type="number"] { max-width: 120px; }
+    .strategy-map { width: 100%; border-collapse: collapse; margin-top: 7px; }
+    .strategy-map th { background: transparent; padding: 5px 7px 8px; font-size: 10px; }
+    .strategy-map td { padding: 7px; font-size: 11px; }
+    .strategy-map .map-select { width: 100%; min-width: 120px; }
+    .map-limit, .map-weight { width: 66px; }
+    .remove-condition { width: 27px; min-height: 27px; padding: 0; }
+    .remove-condition svg { width: 13px; }
+    .condition-link { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--green); padding: 4px 0; font-size: 11px; white-space: nowrap; }
+    .condition-link svg { width: 13px; height: 13px; }
+    .strategy-map-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; padding-top: 11px; border-top: 1px solid #f0f2ef; }
+    .condition-hint { color: var(--muted); font-size: 10px; }
+    .condition-list { display: grid; gap: 8px; }
+    .condition-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) 27px; gap: 8px; align-items: center; padding: 8px; border: 1px solid #edf1ed; border-radius: 6px; background: #fbfdfb; }
+    .condition-row.disabled { opacity: .5; background: #f7f8f7; }
+    .condition-switch { width: 30px; height: 18px; border: 0; border-radius: 12px; padding: 2px; background: #cbd4cd; }
+    .condition-switch:after { content: ""; display: block; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: .18s ease; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+    .condition-switch.on { background: var(--green); }
+    .condition-switch.on:after { transform: translateX(12px); }
+    .condition-fields { display: grid; grid-template-columns: minmax(105px, 1fr) 78px minmax(75px, .8fr); gap: 6px; min-width: 0; }
+    .condition-fields select, .condition-fields input { min-width: 0; width: 100%; height: 29px; border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; color: var(--ink); background: #fff; outline: 0; font-size: 10px; }
+    .condition-mode { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+    .condition-mode button { border: 0; border-right: 1px solid var(--line); background: #fff; color: var(--muted); padding: 4px 8px; font-size: 10px; }
+    .condition-mode button:last-child { border-right: 0; }
+    .condition-mode button.active { color: var(--green); background: var(--green-soft); font-weight: 650; }
+    .condition-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); }
+    .condition-footer .ghost-btn, .condition-footer .primary-btn { min-height: 33px; }
+    #conditionMappingBlock { margin-top: 15px; }
+    .buy-factor-section { padding: 14px 15px; border-top: 1px solid var(--line); }
+    .buy-factor-section:first-child { border-top: 0; }
+    .buy-factor-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+    .buy-factor-title { font-size: 12px; font-weight: 700; }
+    .buy-factor-note { color: var(--muted); font-size: 10px; }
+    .buy-time-list { display: grid; gap: 7px; }
+    .buy-time-row { display: grid; grid-template-columns: 22px 110px 1fr; gap: 8px; align-items: center; padding: 7px 8px; border: 1px solid #edf1ed; border-radius: 6px; background: #fbfdfb; font-size: 11px; }
+    .buy-time-row input { accent-color: var(--green); }
+    .buy-time-row span { font-weight: 650; }
+    .buy-time-row small { color: var(--muted); font-size: 10px; }
+    .buy-position-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .buy-position-item { padding: 8px; border: 1px solid #edf1ed; border-radius: 6px; background: #fbfdfb; }
+    .buy-position-item label { display: block; color: var(--muted); font-size: 10px; margin-bottom: 5px; }
+    .buy-position-item input { width: 100%; height: 29px; border: 1px solid var(--line); border-radius: 5px; padding: 0 7px; color: var(--ink); outline: 0; font-size: 11px; }
+    .buy-position-item input:focus { border-color: #91bba4; box-shadow: 0 0 0 3px var(--green-soft); }
+    .buy-strategy-section { padding: 14px 15px; border-bottom: 1px solid #cfe8d8; background: #f5fbf7; }
+    .buy-strategy-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+    .buy-section-label { display: flex; align-items: center; gap: 8px; }
+    .buy-section-label svg { width: 17px; height: 17px; color: var(--green); }
+    .buy-section-label strong { display: block; color: var(--ink); font-size: 13px; }
+    .buy-section-label small { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
+    .buy-strategy-title { font-size: 12px; font-weight: 700; }
+    .buy-strategy-note { color: var(--muted); font-size: 10px; margin-top: 2px; }
+    .buy-strategy-list { display: grid; gap: 8px; }
+    .buy-strategy-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 9px; border: 1px solid #edf1ed; border-radius: 6px; background: #fbfdfb; }
+    .buy-strategy-row.disabled { opacity: .52; background: #f7f8f7; }
+    .buy-strategy-main { min-width: 0; }
+    .buy-strategy-name { font-size: 11px; font-weight: 700; }
+    .buy-strategy-desc { color: var(--muted); font-size: 10px; margin-top: 2px; }
+    .buy-strategy-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+    .buy-strategy-meta span { color: #617068; background: #f0f4f1; border-radius: 4px; padding: 2px 5px; font-size: 9px; }
+    .buy-strategy-options { display: grid; grid-template-columns: 72px 66px; gap: 5px; }
+    .buy-strategy-options label { color: var(--muted); font-size: 9px; }
+    .buy-strategy-options select, .buy-strategy-options input { width: 100%; height: 27px; border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; color: var(--ink); background: #fff; outline: 0; font-size: 10px; }
+    .buy-strategy-options input { padding: 0 6px; }
+    .buy-strategy-options select:focus, .buy-strategy-options input:focus { border-color: #91bba4; box-shadow: 0 0 0 3px var(--green-soft); }
+    .buy-factor-divider { display: flex; align-items: center; gap: 8px; padding: 14px 15px 7px; border-top: 1px solid var(--line); background: #fff; }
+    .buy-factor-divider svg { width: 17px; height: 17px; color: var(--blue); }
+    .buy-factor-divider strong { display: block; font-size: 13px; }
+    .buy-factor-divider small { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
+    .full-position-section { padding: 14px 15px; border-top: 1px solid #f0dfb9; background: #fffaf0; }
+    .full-position-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+    .full-position-label { display: flex; align-items: center; gap: 8px; }
+    .full-position-label svg { width: 17px; height: 17px; color: var(--orange); }
+    .full-position-label strong { display: block; font-size: 13px; }
+    .full-position-label small { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
+    .full-position-list { display: grid; gap: 7px; }
+    .full-position-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f1e7d2; color: var(--muted); font-size: 10px; }
+    .position-state-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 10px; }
+    .position-state { padding: 7px 8px; border: 1px solid #f0e4cb; border-radius: 5px; background: rgba(255,255,255,.62); }
+    .position-state span { display: block; color: var(--muted); font-size: 9px; }
+    .position-state strong { display: block; margin-top: 2px; font-size: 12px; }
+    .position-state.active { border-color: #e7c77d; background: #fff3d7; }
+    .sell-price-section { padding: 14px 15px; border-top: 1px solid var(--line); }
+    .sell-price-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+    .sell-price-label { display: flex; align-items: center; gap: 8px; }
+    .sell-price-label svg { width: 17px; height: 17px; color: var(--red); }
+    .sell-price-label strong { display: block; font-size: 13px; }
+    .sell-price-label small { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
+    .sell-price-list { display: grid; gap: 7px; }
+    .sell-price-row { display: grid; grid-template-columns: 30px 130px minmax(0, 1fr) 90px; gap: 8px; align-items: center; padding: 8px; border: 1px solid #f0eeee; border-radius: 6px; background: #fffafa; }
+    .sell-price-row strong { font-size: 11px; }
+    .sell-price-row small { color: var(--muted); font-size: 9px; }
+    .sell-price-row select, .sell-price-row input { width: 100%; height: 29px; border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; color: var(--ink); background: #fff; outline: 0; font-size: 10px; }
+    .sell-price-row select:focus, .sell-price-row input:focus, .sell-order-item select:focus, .sell-order-item input:focus { border-color: #d8a5a0; box-shadow: 0 0 0 3px var(--red-soft); }
+    .sell-price-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .sell-price-card { padding: 8px; border: 1px solid #f0eeee; border-radius: 6px; background: #fffafa; }
+    .sell-price-card label { display: block; color: var(--muted); font-size: 10px; margin-bottom: 5px; }
+    .sell-price-card input { width: 100%; height: 29px; border: 1px solid var(--line); border-radius: 5px; padding: 0 7px; color: var(--ink); outline: 0; font-size: 11px; }
+    .sell-price-card small { display: block; color: var(--muted); font-size: 9px; margin-top: 4px; }
+    .sell-order-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .sell-order-item label { display: block; color: var(--muted); font-size: 10px; margin-bottom: 5px; }
+    .sell-order-item select, .sell-order-item input { width: 100%; height: 29px; border: 1px solid var(--line); border-radius: 5px; padding: 0 7px; color: var(--ink); background: #fff; outline: 0; font-size: 10px; }
+
+    .watch-panel { margin-top: 15px; scroll-margin-top: 88px; }
+    .table-tabs { display: flex; gap: 14px; align-items: center; height: 34px; overflow-x: auto; }
+    .table-tab { color: var(--muted); background: none; border: 0; padding: 0; font-size: 12px; position: relative; }
+    .table-tab.active { color: var(--ink); font-weight: 700; }
+    .table-tab.active:after { content: ""; height: 2px; background: var(--green); left: 0; right: 0; bottom: -10px; position: absolute; }
+    .new-group-btn { border: 0; background: transparent; color: var(--green); padding: 0; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 11px; }
+    .new-group-btn svg { width: 13px; height: 13px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 720px; }
+    th { color: #89958e; font-weight: 500; font-size: 11px; text-align: left; background: #fbfcfb; padding: 9px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    td { padding: 12px; border-bottom: 1px solid #f0f2ef; font-size: 12px; white-space: nowrap; }
+    tbody tr:hover { background: #fbfdfb; }
+    .stock-cell { display: flex; align-items: center; gap: 9px; }
+    .stock-star { border: 0; background: transparent; padding: 0; color: #c2cbc5; display: grid; }
+    .stock-star.active { color: #e4a42b; }
+    .stock-star svg { width: 16px; height: 16px; fill: currentColor; }
+    .stock-name { font-weight: 680; cursor: pointer; }
+    .stock-name:hover { color: var(--green); }
+    .stock-code { color: var(--muted); font-size: 10px; margin-top: 1px; }
+    .stock-group { color: var(--muted); font-size: 9px; margin-top: 2px; display: inline-flex; align-items: center; gap: 3px; }
+    .stock-group:before { content: ""; width: 4px; height: 4px; background: #a8b8ae; border-radius: 50%; }
+    .price { font-weight: 680; }
+    .up { color: var(--green); }
+    .down { color: var(--red); }
+    .tag { display: inline-flex; align-items: center; padding: 3px 7px; font-size: 10px; border-radius: 4px; font-weight: 650; }
+    .tag.green { color: var(--green); background: var(--green-soft); }
+    .tag.orange { color: var(--orange); background: var(--orange-soft); }
+    .tag.blue { color: var(--blue); background: var(--blue-soft); }
+    .tag.gray { color: #69756f; background: #f0f2f0; }
+    .table-note { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; padding: 12px 19px; }
+    .table-note button { border: 0; background: transparent; color: var(--green); padding: 0; }
+
+    .auto-panel { margin-top: 15px; scroll-margin-top: 88px; }
+    .automation-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 20px; }
+    .auto-status { display: flex; align-items: center; gap: 11px; padding-bottom: 15px; border-bottom: 1px solid var(--line); }
+    .switch { width: 43px; height: 24px; background: #ccd5ce; border: 0; border-radius: 20px; padding: 3px; transition: .2s; }
+    .switch:after { content: ""; display: block; background: #fff; width: 18px; height: 18px; border-radius: 50%; transition: .2s; box-shadow: 0 1px 4px rgba(0,0,0,.16); }
+    .switch.on { background: var(--green); }
+    .switch.on:after { transform: translateX(19px); }
+    .auto-status strong { display: block; font-size: 13px; }
+    .auto-status span { color: var(--muted); display: block; font-size: 11px; margin-top: 2px; }
+    .performance-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding-top: 16px; }
+    .perf-item { padding-right: 12px; border-right: 1px solid var(--line); }
+    .perf-item:last-child { border-right: 0; }
+    .perf-item label { color: var(--muted); display: block; font-size: 11px; }
+    .perf-item strong { display: block; font-size: 20px; margin-top: 4px; }
+    .auto-log { border-left: 1px solid var(--line); padding-left: 20px; }
+    .log-item { display: grid; grid-template-columns: 57px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f0f2ef; }
+    .log-item:first-child { padding-top: 0; }
+    .log-item:last-child { border-bottom: 0; padding-bottom: 0; }
+    .log-time { color: #9aa59f; font-size: 10px; }
+    .log-main { font-size: 11px; }
+    .log-main strong { font-weight: 680; }
+    .log-main span { color: var(--muted); display: block; margin-top: 2px; }
+    .empty-state { text-align: center; padding: 28px; color: var(--muted); }
+    .toast { position: fixed; right: 24px; bottom: 24px; z-index: 9; color: #fff; background: #24332c; border-radius: 7px; padding: 11px 15px; box-shadow: 0 8px 25px rgba(0,0,0,.2); opacity: 0; transform: translateY(8px); pointer-events: none; transition: .2s; font-size: 12px; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .modal-backdrop { position: fixed; inset: 0; z-index: 5; background: rgba(20,31,26,.36); display: none; align-items: center; justify-content: center; padding: 18px; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: #fff; width: min(520px, 100%); border-radius: 10px; box-shadow: 0 20px 70px rgba(0,0,0,.2); }
+    .modal .panel-header { padding: 17px 20px; }
+    .modal-body { padding: 20px; display: grid; gap: 14px; }
+    .form-field label { color: var(--muted); font-size: 11px; display: block; margin-bottom: 6px; }
+    .form-field input, .form-field select, .form-field textarea { width: 100%; height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; color: var(--ink); outline: 0; background: #fff; }
+    .form-field textarea { height: 118px; resize: vertical; padding-top: 8px; font: 12px/1.6 "SFMono-Regular", Consolas, monospace; }
+    .form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: #91bba4; box-shadow: 0 0 0 3px var(--green-soft); }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 20px 20px; }
+    .auth-screen { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; padding: 24px; background: #e8ece8; }
+    .auth-screen.open { display: flex; }
+    .auth-card { width: min(430px, 100%); overflow: hidden; border: 1px solid #dce3dd; border-radius: 12px; background: #fff; box-shadow: 0 22px 70px rgba(38,53,45,.16); }
+    .auth-top { padding: 28px 30px 22px; background: #f4faf6; border-bottom: 1px solid var(--line); }
+    .auth-brand { display: flex; align-items: center; gap: 10px; }
+    .auth-brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; color: var(--sidebar); background: #d9f3e5; }
+    .auth-brand-mark svg { width: 19px; height: 19px; }
+    .auth-brand strong { display: block; font-size: 15px; }
+    .auth-brand span { display: block; color: var(--muted); font-size: 10px; margin-top: 1px; }
+    .auth-title { margin-top: 25px; font-size: 23px; line-height: 1.25; }
+    .auth-subtitle { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    .auth-form { display: grid; gap: 13px; padding: 24px 30px 28px; }
+    .auth-field label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+    .auth-field input { width: 100%; height: 40px; border: 1px solid var(--line); border-radius: 6px; padding: 0 11px; color: var(--ink); outline: 0; }
+    .auth-field input:focus { border-color: #91bba4; box-shadow: 0 0 0 3px var(--green-soft); }
+    .auth-options { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; }
+    .auth-options label { display: inline-flex; align-items: center; gap: 6px; }
+    .auth-options input { accent-color: var(--green); }
+    .auth-options button { border: 0; padding: 0; color: var(--green); background: transparent; font-size: 11px; }
+    .auth-submit { width: 100%; min-height: 40px; margin-top: 4px; }
+    .auth-hint { color: var(--muted); font-size: 10px; text-align: center; }
+    .detail-modal { width: min(900px, 100%); }
+    .detail-header-info { display: flex; align-items: center; gap: 13px; }
+    .detail-symbol { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 9px; color: var(--green); background: var(--green-soft); }
+    .detail-symbol svg { width: 21px; }
+    .detail-name { font-size: 18px; font-weight: 750; }
+    .detail-code { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .detail-body { padding: 19px 20px 20px; }
+    .detail-metrics { display: flex; align-items: end; gap: 16px; padding-bottom: 15px; }
+    .detail-price { font-size: 30px; line-height: 1; font-weight: 760; letter-spacing: -.04em; }
+    .detail-change { font-size: 13px; font-weight: 700; }
+    .detail-meta { color: var(--muted); font-size: 11px; margin-left: auto; }
+    .detail-chart-wrap { height: 250px; position: relative; border: 1px solid #eef2ee; border-radius: 7px; background: #fbfdfb; padding: 12px 12px 22px; }
+    .detail-chart-grid { position: absolute; inset: 12px 12px 28px; display: grid; grid-template-rows: repeat(4, 1fr); }
+    .detail-chart-grid span { border-top: 1px dashed #e8eeea; }
+    .detail-chart-svg { position: absolute; inset: 12px 12px 27px; width: calc(100% - 24px); height: calc(100% - 39px); overflow: visible; }
+    .detail-axis { position: absolute; left: 12px; right: 12px; bottom: 7px; display: flex; justify-content: space-between; color: #9aa59f; font-size: 10px; }
+    .bs-marker { font-size: 10px; font-weight: 750; }
+    .bs-marker.buy { fill: var(--green); }
+    .bs-marker.sell { fill: var(--red); }
+    .detail-lower { display: grid; grid-template-columns: 1.1fr .9fr; gap: 15px; margin-top: 15px; }
+    .detail-card { border: 1px solid var(--line); border-radius: 7px; padding: 13px; }
+    .detail-card-title { font-weight: 700; font-size: 12px; margin-bottom: 9px; }
+    .bs-list { display: grid; gap: 7px; }
+    .bs-row { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 8px; font-size: 11px; }
+    .bs-badge { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 5px; color: #fff; font-weight: 750; font-size: 10px; }
+    .bs-badge.buy { background: var(--green); }
+    .bs-badge.sell { background: var(--red); }
+    .bs-row-main strong { display: block; }
+    .bs-row-main span { color: var(--muted); font-size: 10px; }
+    .bs-row-result { font-weight: 700; }
+    .detail-signal-list { display: grid; gap: 9px; }
+    .detail-signal-item { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; }
+    .detail-signal-item strong { color: var(--ink); }
+
+    @media (max-width: 1120px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .grid-hero, .section-grid, .automation-grid { grid-template-columns: 1fr; }
+      .auto-log { border-left: 0; border-top: 1px solid var(--line); padding: 16px 0 0; }
+    }
+    @media (max-width: 760px) {
+      body { min-width: 0; background: var(--canvas); }
+      .sidebar { position: static; width: 100%; height: auto; padding: 14px; }
+      .app-shell { display: block; width: 100%; height: auto; min-height: 100vh; margin: 0; overflow: visible; border: 0; border-radius: 0; box-shadow: none; }
+      .main { margin-left: 0; width: 100%; }
+      .brand { padding-bottom: 12px; }
+      .nav-label, .sidebar-spacer, .system-status, .profile { display: none; }
+      .nav-list { display: flex; overflow-x: auto; padding-bottom: 2px; }
+      .nav-item { width: auto; white-space: nowrap; padding: 8px 10px; }
+      .topbar { height: 60px; padding: 0 16px; }
+      .top-actions .market-time, .top-actions .ghost-btn { display: none; }
+      .main-content { padding: 21px 16px 35px; }
+      .page-heading { align-items: flex-start; flex-direction: column; }
+      .heading-actions { width: 100%; }
+      .heading-actions button { flex: 1; }
+      .stats-grid { gap: 9px; }
+      .stat-card { padding: 13px; min-height: 110px; }
+      .stat-value { font-size: 23px; }
+      .panel-header, .panel-body { padding-left: 14px; padding-right: 14px; }
+      .filter-tools { width: 100%; }
+      .search-box { width: 100%; }
+      .filter-row { grid-template-columns: 50px 1fr; gap: 8px; }
+      .code-filter { grid-template-columns: 50px 1fr; }
+      .code-editor-footer { align-items: flex-start; flex-direction: column; }
+      .code-editor-actions { width: 100%; }
+      .code-editor-actions button { flex: 1; }
+      .filter-result-row { grid-template-columns: 20px 1fr; gap: 7px; }
+      .filter-result-row .result-signal, .filter-result-row .result-actions { grid-column: 2; }
+      .result-actions { justify-content: flex-start; }
+      .result-heading { align-items: flex-start; flex-direction: column; }
+      .batch-tools { margin-left: 0; flex-wrap: wrap; }
+      .condition-toolbar { align-items: flex-start; flex-direction: column; }
+      .condition-name { width: 100%; }
+      .condition-name input { width: 100%; }
+      .condition-layout { grid-template-columns: 1fr; }
+      .condition-fields { grid-template-columns: minmax(100px, 1fr) 70px minmax(68px, .8fr); }
+      .strategy-pool-layout { grid-template-columns: 1fr; }
+      .buy-strategy-row { grid-template-columns: 30px minmax(0, 1fr); }
+      .buy-strategy-options { grid-column: 2; }
+      .table-note { padding-left: 14px; padding-right: 14px; }
+      .chart-toolbar { gap: 0; }
+      .chart-tab { padding-left: 5px; padding-right: 5px; }
+      .detail-metrics { align-items: flex-start; flex-wrap: wrap; }
+      .detail-meta { width: 100%; margin-left: 0; }
+      .detail-lower { grid-template-columns: 1fr; }
+      .backtest-toolbar, .backtest-config { grid-template-columns: 1fr; }
+      .backtest-metrics { grid-template-columns: repeat(2, 1fr); padding-left: 14px; padding-right: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><i data-lucide="activity"></i></div>
+        <div><div class="brand-name">QuantPilot</div><div class="brand-sub">量化交易工作台</div></div>
+      </div>
+      <div class="nav-label">工作台</div>
+      <nav class="nav-list">
+        <button class="nav-item active" data-target="overview"><i data-lucide="layout-dashboard"></i><span>市场总览</span></button>
+        <button class="nav-item" data-target="history-backtest"><i data-lucide="history"></i><span>历史回测</span></button>
+        <button class="nav-item" data-target="code-strategy"><i data-lucide="code-2"></i><span>代码策略</span><span class="nav-count">IDE</span></button>
+        <button class="nav-item" data-target="watchlist"><i data-lucide="star"></i><span>我的自选</span><span class="nav-count" id="watchCount">6</span></button>
+        <button class="nav-item" data-target="automation"><i data-lucide="bot"></i><span>自动交易</span></button>
+      </nav>
+      <div class="nav-label">管理</div>
+      <nav class="nav-list">
+        <button class="nav-item" data-target="settings"><i data-lucide="sliders-horizontal"></i><span>买入/卖出条件设置</span><i class="settings-chevron" data-lucide="chevron-down"></i></button>
+        <div class="settings-subnav" id="settingsSubnav">
+          <button class="active" data-settings-section="buy"><i data-lucide="arrow-down-to-line"></i>买入条件</button>
+          <button data-settings-section="sell"><i data-lucide="arrow-up-from-line"></i>卖出条件</button>
+        </div>
+        <button class="nav-item" data-action="help"><i data-lucide="circle-help"></i><span>使用说明</span></button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="system-status">
+        <div class="status-row"><span class="status-dot"></span><strong>数据服务正常</strong></div>
+        <div>行情更新于 09:42:18 · 延迟 1.2s</div>
+      </div>
+      <button class="profile profile-button" id="profileButton" aria-label="打开账户菜单" aria-expanded="false"><div class="avatar">林</div><div><div class="profile-name">林先生</div><div class="profile-role">专业版账户</div></div><i data-lucide="more-horizontal"></i></button>
+      <div class="profile-menu" id="profileMenu">
+        <button id="accountSettings"><i data-lucide="user-round-cog"></i>账号设置</button>
+        <button class="danger" id="logoutButton"><i data-lucide="log-out"></i>退出登录</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="breadcrumb"><span>QuantPilot</span><strong id="pageTitle">市场总览</strong></div>
+        <div class="top-actions"><span class="market-time">A股 · 交易中 09:42</span><button class="icon-btn" id="refreshBtn" title="刷新数据"><i data-lucide="refresh-cw"></i></button><button class="ghost-btn" id="notifyBtn"><i data-lucide="bell"></i>通知 <span class="tag orange">3</span></button></div>
+      </header>
+
+      <div class="main-content">
+        <section id="overview" class="page-heading">
+          <div><h1>早上好，林先生</h1><p class="heading-note">今天有 12 个策略信号，建议优先关注高置信度机会。</p></div>
+          <div class="heading-actions"><button class="ghost-btn" id="exportBtn"><i data-lucide="download"></i>导出报告</button><button class="primary-btn" id="newStrategyBtn"><i data-lucide="plus"></i>新建策略</button></div>
+        </section>
+
+        <section class="stats-grid" aria-label="核心指标">
+          <article class="stat-card"><div class="stat-label"><i data-lucide="wallet-cards"></i>策略账户总资产</div><div class="stat-value">¥ 1,286,430</div><div class="stat-footer"><span class="trend-up">+2.84%</span><span>较昨日收盘</span></div></article>
+          <article class="stat-card"><div class="stat-label"><i data-lucide="trending-up"></i>本月策略收益</div><div class="stat-value positive">+¥ 36,218</div><div class="stat-footer"><span class="trend-up">+8.41%</span><span>跑赢沪深 300 5.2%</span></div></article>
+          <article class="stat-card"><div class="stat-label"><i data-lucide="target"></i>自动化交易胜率</div><div class="stat-value neutral">68.7%</div><div class="stat-footer"><span>近 90 天 · 143 笔交易</span></div></article>
+          <article class="stat-card"><div class="stat-label"><i data-lucide="shield-check"></i>最大回撤</div><div class="stat-value warning">-6.42%</div><div class="stat-footer"><span>风险等级</span><span class="tag green">稳健</span></div></article>
+        </section>
+
+        <section class="grid-hero">
+          <article class="panel chart-panel">
+            <div class="panel-header"><div><div class="panel-title">策略组合净值</div><div class="panel-subtitle">实盘账户 · 2024-01-01 至今</div></div><div class="chart-toolbar"><button class="chart-tab" data-range="1M">1月</button><button class="chart-tab" data-range="3M">3月</button><button class="chart-tab active" data-range="YTD">今年</button><button class="chart-tab" data-range="ALL">全部</button></div></div>
+            <div class="panel-body"><div class="chart-wrap"><div class="chart-grid"><span></span><span></span><span></span><span></span></div><svg class="chart-svg" viewBox="0 0 720 180" preserveAspectRatio="none" role="img" aria-label="策略组合净值曲线"><defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16835f" stop-opacity=".16"/><stop offset="1" stop-color="#16835f" stop-opacity="0"/></linearGradient></defs><path d="M0 153 C34 150 46 138 72 143 S111 130 130 132 S163 107 188 117 S230 105 252 110 S281 89 310 95 S348 85 367 90 S399 66 424 73 S458 62 482 68 S510 43 536 50 S572 36 590 43 S626 26 650 34 S688 16 720 20 L720 180 L0 180Z" fill="url(#area)"/><path d="M0 153 C34 150 46 138 72 143 S111 130 130 132 S163 107 188 117 S230 105 252 110 S281 89 310 95 S348 85 367 90 S399 66 424 73 S458 62 482 68 S510 43 536 50 S572 36 590 43 S626 26 650 34 S688 16 720 20" fill="none" stroke="#16835f" stroke-width="2.5" vector-effect="non-scaling-stroke"/><path d="M0 151 C46 153 91 144 130 148 S202 136 252 141 S330 128 367 134 S441 116 482 123 S548 110 590 114 S660 101 720 107" fill="none" stroke="#3974c5" stroke-width="1.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/></svg><div class="chart-axis"><span>01/01</span><span>02/01</span><span>03/01</span><span>04/01</span><span>05/01</span><span>06/01</span><span>07/01</span></div></div><div class="chart-legend"><span><i class="legend-dot"></i>策略组合 <strong id="rangeReturn">+18.62%</strong></span><span><i class="legend-dot blue"></i>沪深300 <strong>+13.40%</strong></span></div></div>
+          </article>
+          <article class="panel signal-panel"><div class="panel-header"><div><div class="panel-title">今日策略信号</div><div class="panel-subtitle">按置信度排序 · 09:42 更新</div></div><button class="icon-btn" id="signalMore" title="查看全部信号"><i data-lucide="arrow-up-right"></i></button></div><div class="panel-body"><div class="signal-total"><div><strong>12</strong><span> 条待确认</span></div><span class="tag green">较昨日 +4</span></div><div class="signal-list"><div class="signal-item"><div class="signal-icon green"><i data-lucide="zap"></i></div><div><div class="signal-name">趋势加速反转</div><div class="signal-desc">强势洗盘 · 7 个标的</div></div><div class="signal-num up">92%</div></div><div class="signal-item"><div class="signal-icon orange"><i data-lucide="triangle-alert"></i></div><div><div class="signal-name">涨停回踩</div><div class="signal-desc">量价配合 · 3 个标的</div></div><div class="signal-num up">86%</div></div><div class="signal-item"><div class="signal-icon blue"><i data-lucide="git-compare-arrows"></i></div><div><div class="signal-name">多周期共振</div><div class="signal-desc">均线拐点 · 2 个标的</div></div><div class="signal-num up">78%</div></div></div></div></article>
+        </section>
+
+        <section id="filter" class="section-grid">
+          <article class="panel filter-panel"><div class="panel-header"><div><div class="panel-title">策略筛选器</div><div class="panel-subtitle">组合条件筛选出符合交易计划的股票</div></div><div class="filter-tools"><div class="search-box"><i data-lucide="search"></i><input id="stockSearch" placeholder="搜索股票 / 代码" aria-label="搜索股票或代码"></div><button class="icon-btn" id="clearFilter" title="清除筛选"><i data-lucide="rotate-ccw"></i></button></div></div><div class="filter-body"><div class="filter-row"><div class="filter-label">市场</div><div class="chips" data-filter="market"><button class="chip selected">沪深 A 股</button><button class="chip">科创板</button><button class="chip">创业板</button><button class="chip">北交所</button></div></div><div class="filter-row"><div class="filter-label">技术形态</div><div class="chips" data-filter="pattern"><button class="chip selected">趋势向上</button><button class="chip selected">放量突破</button><button class="chip">均线金叉</button><button class="chip">回踩支撑</button><button class="chip">底部反转</button></div></div><div class="filter-row"><div class="filter-label">基本面</div><div class="chips" data-filter="fundamental"><button class="chip">ROE &gt; 10%</button><button class="chip selected">营收增长</button><button class="chip">低估值</button><button class="chip">机构增持</button></div></div><div class="filter-row"><div class="filter-label">风险控制</div><div class="chips" data-filter="risk"><button class="chip selected">剔除 ST</button><button class="chip selected">剔除近跌停</button><button class="chip">波动率 &lt; 30%</button></div></div><div class="code-filter"><label class="code-filter-label" for="codeFilter">股票代码</label><input id="codeFilter" class="code-filter-input" inputmode="numeric" maxlength="6" placeholder="输入 6 位代码"><span class="code-filter-hint">支持精确定位，也可只输入前几位</span><button class="ghost-btn" id="clearCodeFilter"><i data-lucide="x"></i>清空</button><button class="ghost-btn" id="generateCodeStrategy"><i data-lucide="wand-sparkles"></i>按代码生成策略</button></div><div class="filter-footer"><div class="filter-summary">已选 <strong id="selectedFilterCount">6</strong> 个条件 · 预计命中 <strong>37</strong> 只</div><button class="primary-btn" id="runScan"><i data-lucide="scan-line"></i>运行筛选</button></div><div class="filter-results" id="filterResults"><div class="result-heading"><strong>筛选结果预览 <span class="tag blue">3 条示例</span></strong><span>选择分组后加入自选，加入后可在自选区继续调整</span></div><div class="result-list"><div class="filter-result-row" data-name="比亚迪" data-code="002594" data-sector="汽车整车" data-price="246.80" data-change="+2.36%" data-signal="趋势加速反转" data-strength="89" data-win="71.8%" data-return="+11.8%"><div class="result-stock"><div><div class="stock-name">比亚迪</div><div class="stock-code">002594 · 汽车整车</div></div></div><div class="result-signal">历史胜率 <strong>71.8%</strong> · 信号 <strong>89</strong></div><div class="result-actions"><select class="group-select result-group" aria-label="比亚迪分组"><option value="核心关注">核心关注</option><option value="短线策略">短线策略</option><option value="待观察">待观察</option></select><button class="ghost-btn add-filter-stock"><i data-lucide="star"></i>加入自选</button></div></div><div class="filter-result-row" data-name="立讯精密" data-code="002475" data-sector="消费电子" data-price="31.26" data-change="+1.76%" data-signal="放量突破" data-strength="84" data-win="69.4%" data-return="+8.7%"><div class="result-stock"><div><div class="stock-name">立讯精密</div><div class="stock-code">002475 · 消费电子</div></div></div><div class="result-signal">历史胜率 <strong>69.4%</strong> · 信号 <strong>84</strong></div><div class="result-actions"><select class="group-select result-group" aria-label="立讯精密分组"><option value="核心关注">核心关注</option><option value="短线策略" selected>短线策略</option><option value="待观察">待观察</option></select><button class="ghost-btn add-filter-stock"><i data-lucide="star"></i>加入自选</button></div></div><div class="filter-result-row" data-name="亿纬锂能" data-code="300014" data-sector="电池" data-price="43.18" data-change="-0.68%" data-signal="回踩支撑" data-strength="76" data-win="66.2%" data-return="+6.2%"><div class="result-stock"><div><div class="stock-name">亿纬锂能</div><div class="stock-code">300014 · 电池</div></div></div><div class="result-signal">历史胜率 <strong>66.2%</strong> · 信号 <strong>76</strong></div><div class="result-actions"><select class="group-select result-group" aria-label="亿纬锂能分组"><option value="核心关注">核心关注</option><option value="短线策略">短线策略</option><option value="待观察" selected>待观察</option></select><button class="ghost-btn add-filter-stock"><i data-lucide="star"></i>加入自选</button></div></div></div></div></div></article>
+
+          <article class="panel"><div class="panel-header"><div><div class="panel-title">策略表现</div><div class="panel-subtitle">已启用策略 · 近 90 天回测</div></div><button class="icon-btn" id="strategyManage" title="管理策略"><i data-lucide="settings-2"></i></button></div><div class="panel-body"><div class="strategy-list"><label class="strategy-row"><input class="strategy-check" data-strategy="趋势加速反转" type="checkbox" checked><div><div class="strategy-name">趋势加速反转</div><div class="strategy-meta"><span>胜率 74.2%</span><span>交易 48 笔</span></div><div class="progress"><span style="width:74.2%"></span></div></div><div class="strategy-return">+23.8%<small>夏普 1.84</small></div></label><label class="strategy-row"><input class="strategy-check" data-strategy="涨停回踩" type="checkbox" checked><div><div class="strategy-name">涨停回踩 · 低吸</div><div class="strategy-meta"><span>胜率 68.5%</span><span>交易 36 笔</span></div><div class="progress"><span style="width:68.5%"></span></div></div><div class="strategy-return">+16.4%<small>夏普 1.42</small></div></label><label class="strategy-row"><input class="strategy-check" data-strategy="多周期共振" type="checkbox" checked><div><div class="strategy-name">多周期共振</div><div class="strategy-meta"><span>胜率 63.7%</span><span>交易 59 笔</span></div><div class="progress"><span style="width:63.7%"></span></div></div><div class="strategy-return">+11.2%<small>夏普 1.16</small></div></label></div><div class="strategy-filter-footer"><span class="strategy-filter-summary"><strong id="selectedStrategyCount">3</strong> 个策略已启用，可将命中股票同步到自选区</span><button class="ghost-btn strategy-filter-btn" id="applyStrategyFilter"><i data-lucide="filter"></i>用已选策略筛选</button></div></div></article>
+        </section>
+
+        <section id="history-backtest" class="panel backtest-panel"><div class="panel-header"><div><div class="panel-title">历史回测</div><div class="panel-subtitle">选择历史区间、自选股票池与择时规则，复盘完整的买入卖出过程</div></div><span class="tag blue" id="backtestRunState">待运行</span></div><div class="backtest-toolbar"><div class="backtest-field"><label>回测时间范围</label><div class="range-tabs"><button class="range-tab" data-range="1Y">近 1 年</button><button class="range-tab active" data-range="YTD">今年</button><button class="range-tab" data-range="3Y">近 3 年</button><button class="range-tab" data-range="custom">自定义</button></div></div><div class="backtest-field"><label for="backtestStart">开始日期</label><input id="backtestStart" type="date" value="2025-01-01"></div><div class="backtest-field"><label for="backtestEnd">结束日期</label><input id="backtestEnd" type="date" value="2025-12-31"></div><button class="primary-btn" id="runBacktest"><i data-lucide="play"></i>运行回测</button></div><div class="backtest-config"><div class="backtest-config-card"><div class="backtest-config-title"><span>回测股票池</span><span class="tag green" id="backtestStockCount">已选 0 只</span></div><div class="backtest-pool-toolbar"><select id="backtestFavoriteSelect" aria-label="选择自选股"><option value="">选择自选股</option></select><button class="ghost-btn" id="addBacktestStock"><i data-lucide="plus"></i>加入股票池</button></div><div class="backtest-pool-list" id="backtestPoolList"></div><span class="backtest-pool-note">仅显示当前自选股，可先在“我的自选”中添加股票</span></div><div class="backtest-config-card"><div class="backtest-config-title"><span>择时规则</span><span class="tag orange">可组合</span></div><div class="timing-list"><div class="timing-row"><span>买入触发</span><select id="buyTiming"><option>次日开盘买入</option><option>信号确认后收盘买入</option><option>突破价成交</option></select></div><div class="timing-row"><span>卖出触发</span><select id="sellTiming"><option>止盈 8% / 止损 4%</option><option>跌破 20 日均线</option><option>持有满 10 个交易日</option></select></div></div></div></div><div class="backtest-metrics"><div class="backtest-metric"><label>策略收益</label><strong class="up" id="backtestReturn">+28.64%</strong></div><div class="backtest-metric"><label>年化收益</label><strong class="up" id="backtestAnnual">+31.42%</strong></div><div class="backtest-metric"><label>胜率</label><strong id="backtestWin">68.7%</strong></div><div class="backtest-metric"><label>最大回撤</label><strong class="down" id="backtestDrawdown">-8.26%</strong></div><div class="backtest-metric"><label>交易次数</label><strong id="backtestTrades">47</strong></div></div><div class="backtest-chart"><div class="backtest-chart-grid"><span></span><span></span><span></span></div><svg viewBox="0 0 820 100" preserveAspectRatio="none" aria-label="回测收益曲线"><path d="M0 88 C45 84 63 78 95 82 S145 62 178 68 S224 55 258 62 S300 40 335 49 S378 44 410 51 S458 29 491 37 S540 31 570 36 S610 19 648 28 S699 14 732 20 S777 8 820 12" fill="none" stroke="#16835f" stroke-width="2.2" vector-effect="non-scaling-stroke"/><path d="M0 89 L820 42" fill="none" stroke="#b8c4bd" stroke-width="1.1" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/></svg><div class="backtest-chart-axis"><span>2025/01</span><span>2025/03</span><span>2025/05</span><span>2025/07</span><span>2025/09</span><span>2025/12</span></div></div><div class="backtest-results-header"><div><div class="panel-title">交易明细</div><span>展示股票池中的标的，结合择时规则产生的买卖记录</span></div><span class="backtest-status" id="backtestStatus">最近运行：2026-08-07 09:42</span></div><div class="table-wrap"><table><thead><tr><th>股票</th><th>策略信号</th><th>买入时间</th><th>买入价</th><th>卖出时间</th><th>卖出价</th><th>持仓天数</th><th>收益率</th><th>结果</th></tr></thead><tbody id="backtestTable"><tr><td><div class="stock-name">宁德时代</div><div class="stock-code">300750 · 电池</div></td><td><span class="tag green">趋势加速反转</span></td><td>2025-02-18 09:35</td><td>¥ 198.20</td><td>2025-03-11 14:42</td><td>¥ 220.85</td><td>15</td><td class="up">+11.43%</td><td><span class="tag green">止盈</span></td></tr><tr><td><div class="stock-name">中际旭创</div><div class="stock-code">300308 · 通信设备</div></td><td><span class="tag orange">涨停回踩</span></td><td>2025-04-07 09:31</td><td>¥ 118.60</td><td>2025-04-22 10:18</td><td>¥ 130.42</td><td>11</td><td class="up">+9.97%</td><td><span class="tag green">止盈</span></td></tr><tr><td><div class="stock-name">工业富联</div><div class="stock-code">601138 · 消费电子</div></td><td><span class="tag green">放量突破</span></td><td>2025-06-13 13:42</td><td>¥ 21.86</td><td>2025-06-23 09:30</td><td>¥ 21.01</td><td>6</td><td class="down">-3.89%</td><td><span class="tag gray">止损</span></td></tr><tr><td><div class="stock-name">药明康德</div><div class="stock-code">603259 · 医疗服务</div></td><td><span class="tag blue">多周期共振</span></td><td>2025-08-19 10:06</td><td>¥ 44.18</td><td>2025-09-02 14:10</td><td>¥ 48.66</td><td>10</td><td class="up">+10.14%</td><td><span class="tag green">止盈</span></td></tr></tbody></table></div></section>
+
+        <section id="code-strategy" class="panel code-strategy-panel"><div class="panel-header"><div><div class="panel-title">代码筛选</div><div class="panel-subtitle">编写筛选代码并查看查询结果，结果可直接加入自选分组</div></div><div class="code-menu-status"><span class="status-dot"></span>QuantPilot DSL · 编辑模式</div></div><div class="code-strategy-body"><div id="codeStrategyMount"></div><div id="codeResultMount"></div><div id="codeStrategyPoolMount"></div><div id="codeGroupStrategyMount"></div></div></section>
+
+        <section id="settings" class="page-heading settings-heading">
+          <div><h1>买入/卖出条件设置</h1><p class="heading-note">配置自动交易的买入规则与卖出规则</p></div>
+        </section>
+
+        <section id="condition-strategy" class="panel condition-strategy-panel">
+          <div class="panel-header">
+            <div><div class="panel-title">买入/卖出条件设置</div><div class="panel-subtitle">配置自动交易的买入规则与卖出规则</div></div>
+            <div class="condition-status"><span class="status-dot"></span><span id="conditionStatusText">草稿 · 未保存</span></div>
+          </div>
+          <div class="condition-strategy-body">
+            <div class="condition-toolbar">
+              <div class="condition-name"><label for="conditionStrategyName">设置名称</label><input id="conditionStrategyName" value="默认交易条件" aria-label="买入卖出条件设置名称"></div>
+              <div class="condition-mode" aria-label="条件组合逻辑"><button class="active" data-mode="and">全部满足</button><button data-mode="or">任一满足</button></div>
+            </div>
+            <div class="condition-layout">
+              <div class="condition-block" id="conditionMappingBlock">
+                <div class="condition-block-header"><div><div class="condition-block-title"><i data-lucide="layers-3"></i>代码选股分组策略</div><div class="condition-block-subtitle">将不同代码策略的命中结果写入对应自选分组</div></div><button class="condition-link" id="addStrategyMapping"><i data-lucide="plus"></i>添加策略</button></div>
+                <div class="condition-block-body">
+                  <div class="condition-control"><label for="conditionUniverse">选股范围</label><select id="conditionUniverse"><option>沪深 A 股</option><option>我的自选股</option><option>指定股票池</option></select></div>
+                  <table class="strategy-map"><thead><tr><th>代码选股策略</th><th>目标分组</th><th>上限</th><th>权重</th><th></th></tr></thead><tbody id="strategyMappingList">
+                    <tr><td><select class="map-select"><option>趋势加速反转</option><option>涨停回踩 · 低吸</option><option>多周期共振</option><option>放量突破</option></select></td><td><select class="map-select"><option>核心关注</option><option>短线策略</option><option>待观察</option></select></td><td><input class="map-limit" type="number" value="10" min="1" aria-label="策略入选上限"></td><td><input class="map-weight" type="number" value="50" min="0" max="100" aria-label="策略权重">%</td><td><button class="icon-btn remove-condition" title="删除选股策略"><i data-lucide="trash-2"></i></button></td></tr>
+                    <tr><td><select class="map-select"><option>趋势加速反转</option><option selected>涨停回踩 · 低吸</option><option>多周期共振</option><option>放量突破</option></select></td><td><select class="map-select"><option>核心关注</option><option selected>短线策略</option><option>待观察</option></select></td><td><input class="map-limit" type="number" value="6" min="1" aria-label="策略入选上限"></td><td><input class="map-weight" type="number" value="30" min="0" max="100" aria-label="策略权重">%</td><td><button class="icon-btn remove-condition" title="删除选股策略"><i data-lucide="trash-2"></i></button></td></tr>
+                  </tbody></table>
+                  <div class="strategy-map-footer"><span class="condition-hint" id="mappingHint">已配置 2 个选股策略 · 每日收盘前更新</span><button class="condition-link" id="syncCodeStrategy"><i data-lucide="refresh-cw"></i>同步代码策略</button></div>
+                </div>
+              </div>
+              <div class="condition-block" id="buyConditionBlock">
+                <div class="condition-block-header"><div><div class="condition-block-title"><i data-lucide="arrow-down-to-line"></i>买入条件</div><div class="condition-block-subtitle">满足条件后生成买入信号</div></div><button class="condition-link" data-add-condition="buy"><i data-lucide="plus"></i>添加条件</button></div>
+                <div class="condition-block-body">
+                  <div class="buy-strategy-section">
+                    <div class="buy-strategy-heading"><div class="buy-section-label"><i data-lucide="layers-3"></i><div><strong>策略选择</strong><small>策略决定在什么市场状态和时间窗口执行买入</small></div></div><button class="condition-link" id="addBuyStrategy"><i data-lucide="plus"></i>添加策略</button></div>
+                    <div class="buy-strategy-list" id="buyStrategyList">
+                      <div class="buy-strategy-row">
+                        <button class="condition-switch on" aria-label="启用强势题材进攻策略"></button>
+                        <div class="buy-strategy-main"><div class="buy-strategy-name">强势题材进攻</div><div class="buy-strategy-desc">市场进入进攻状态，强题材确认后在上午执行</div><div class="buy-strategy-meta"><span>市场：进攻</span><span>题材评分 ≥ 70</span><span>时段：09:45 - 10:30</span></div></div>
+                        <div class="buy-strategy-options"><label>优先级<select aria-label="强势题材进攻优先级"><option>1</option><option>2</option><option>3</option></select></label><label>首次仓位<input type="number" value="30" min="0" max="100" aria-label="强势题材进攻首次仓位">%</label></div>
+                      </div>
+                      <div class="buy-strategy-row">
+                        <button class="condition-switch on" aria-label="启用题材分歧转强策略"></button>
+                        <div class="buy-strategy-main"><div class="buy-strategy-name">题材分歧转强</div><div class="buy-strategy-desc">市场震荡但题材未退潮，午后重新转强时执行</div><div class="buy-strategy-meta"><span>市场：震荡</span><span>龙头：未退潮</span><span>时段：13:30 - 14:00</span></div></div>
+                        <div class="buy-strategy-options"><label>优先级<select aria-label="题材分歧转强优先级"><option>1</option><option selected>2</option><option>3</option></select></label><label>首次仓位<input type="number" value="20" min="0" max="100" aria-label="题材分歧转强首次仓位">%</label></div>
+                      </div>
+                      <div class="buy-strategy-row">
+                        <button class="condition-switch on" aria-label="启用低风险确认策略"></button>
+                        <div class="buy-strategy-main"><div class="buy-strategy-name">低风险确认</div><div class="buy-strategy-desc">环境连续确认未恶化后，使用较小仓位参与</div><div class="buy-strategy-meta"><span>市场：稳定</span><span>连续确认：2 次</span><span>午后或次日执行</span></div></div>
+                        <div class="buy-strategy-options"><label>优先级<select aria-label="低风险确认优先级"><option>1</option><option>2</option><option selected>3</option></select></label><label>首次仓位<input type="number" value="20" min="0" max="100" aria-label="低风险确认首次仓位">%</label></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="buy-factor-divider"><i data-lucide="list-filter"></i><div><strong>触发因素</strong><small>因素决定当前是否满足买入条件，作为所有买入策略的公共门槛</small></div></div>
+                  <div class="buy-factor-section">
+                    <div class="buy-factor-heading"><div><div class="buy-factor-title">交易环境</div><div class="buy-factor-note">只在外围与 A 股环境允许进攻时开仓</div></div><span class="tag green">硬性拦截</span></div>
+                    <div class="condition-list" id="buyConditionList">
+                      <div class="condition-row"><button class="condition-switch on" aria-label="启用外围环境条件"></button><div class="condition-fields"><select><option>外围环境</option><option>A 股市场状态</option><option>两市成交额</option><option>上涨 / 下跌家数比</option></select><select><option>不低于</option><option>大于等于</option><option>不高于</option></select><input value="中性" aria-label="外围环境阈值"></div><button class="icon-btn remove-condition" title="删除条件"><i data-lucide="x"></i></button></div>
+                      <div class="condition-row"><button class="condition-switch on" aria-label="启用 A 股环境条件"></button><div class="condition-fields"><select><option>A 股市场状态</option><option>外围环境</option><option>两市成交额</option><option>上涨 / 下跌家数比</option></select><select><option>不低于</option><option>大于等于</option><option>不高于</option></select><input value="震荡" aria-label="A 股市场状态阈值"></div><button class="icon-btn remove-condition" title="删除条件"><i data-lucide="x"></i></button></div>
+                      <div class="condition-row"><button class="condition-switch on" aria-label="启用市场宽度条件"></button><div class="condition-fields"><select><option>上涨 / 下跌家数比</option><option>两市成交额</option><option>外围环境</option><option>A 股市场状态</option></select><select><option>大于等于</option><option>大于</option><option>不高于</option></select><input value="1.2" aria-label="市场宽度阈值"></div><button class="icon-btn remove-condition" title="删除条件"><i data-lucide="x"></i></button></div>
+                    </div>
+                  </div>
+                  <div class="buy-factor-section">
+                    <div class="buy-factor-heading"><div><div class="buy-factor-title">题材强度</div><div class="buy-factor-note">只参与强势题材，避免在题材退潮时开仓</div></div><span class="tag blue">评分条件</span></div>
+                    <div class="condition-list">
+                      <div class="condition-row"><button class="condition-switch on" aria-label="启用题材强度条件"></button><div class="condition-fields"><select><option>题材强度评分</option><option>题材涨幅排名</option><option>题材上涨占比</option><option>题材资金流向</option></select><select><option>大于等于</option><option>大于</option><option>不低于</option></select><input value="70" aria-label="题材强度阈值"></div><button class="icon-btn remove-condition" title="删除条件"><i data-lucide="x"></i></button></div>
+                      <div class="condition-row"><button class="condition-switch on" aria-label="启用题材龙头条件"></button><div class="condition-fields"><select><option>题材龙头状态</option><option>题材持续天数</option><option>题材涨停数量</option><option>题材资金流向</option></select><select><option>未退潮</option><option>强势</option><option>不低于</option></select><input value="强势或稳定" aria-label="题材龙头状态阈值"></div><button class="icon-btn remove-condition" title="删除条件"><i data-lucide="x"></i></button></div>
+                    </div>
+                  </div>
+                  <div class="buy-factor-section">
+                    <div class="buy-factor-heading"><div><div class="buy-factor-title">买入时段</div><div class="buy-factor-note">开盘先观察，确认后分批执行</div></div><span class="tag orange">执行条件</span></div>
+                    <div class="buy-time-list">
+                      <label class="buy-time-row"><input type="checkbox" checked><span>09:45 - 10:30</span><small>主买入时段 · 市场与题材确认后执行</small></label>
+                      <label class="buy-time-row"><input type="checkbox" checked><span>13:30 - 14:00</span><small>午后确认时段 · 题材继续走强时执行</small></label>
+                      <label class="buy-time-row"><input type="checkbox"><span>09:30 - 09:45</span><small>仅观察，不主动开仓</small></label>
+                      <label class="buy-time-row"><input type="checkbox"><span>14:30 以后</span><small>禁止新开仓，避免尾盘风险</small></label>
+                    </div>
+                  </div>
+                  <div class="buy-factor-section">
+                    <div class="buy-factor-heading"><div><div class="buy-factor-title">分批买入与仓位</div><div class="buy-factor-note">买入对象仅来自已配置的自选股池</div></div><span class="tag gray">账户限制</span></div>
+                    <div class="buy-position-grid">
+                      <div class="buy-position-item"><label>首次确认买入</label><input type="number" value="30" min="0" max="100" aria-label="首次确认买入比例">%</div>
+                      <div class="buy-position-item"><label>题材持续买入</label><input type="number" value="30" min="0" max="100" aria-label="题材持续买入比例">%</div>
+                      <div class="buy-position-item"><label>收盘前追加上限</label><input type="number" value="40" min="0" max="100" aria-label="收盘前追加比例">%</div>
+                    </div>
+                  </div>
+                  <div class="full-position-section">
+                    <div class="full-position-heading"><div class="full-position-label"><i data-lucide="shield-check"></i><div><strong>满仓条件</strong><small>只有全部条件满足，才允许账户总仓位达到 100%</small></div></div><span class="tag orange">高门槛</span></div>
+                    <div class="full-position-list" id="fullPositionList">
+                      <div class="condition-row"><button class="condition-switch on" aria-label="启用满仓市场状态条件"></button><div class="condition-fields"><select><option>A 股市场状态</option><option>外围环境</option><option>题材强度评分</option><option>有效买入策略数</option></select><select><option>等于</option><option>不低于</option><option>大于等于</option></select><input value="进攻" aria-label="满仓市场状态阈值"></div><button class="icon-btn remove-condition" title="删除满仓条件"><i data-lucide="x"></i></button></div>
+                      <div class="condition-row"><button class="condition-switch on" aria-label="启用满仓市场宽度条件"></button><div class="condition-fields"><select><option>上涨 / 下跌家数比</option><option>两市成交额</option><option>题材强度评分</option><option>有效买入策略数</option></select><select><option>大于等于</option><option>大于</option><option>不低于</option></select><input value="1.5" aria-label="满仓市场宽度阈值"></div><button class="icon-btn remove-condition" title="删除满仓条件"><i data-lucide="x"></i></button></div>
+                      <div class="condition-row"><button class="condition-switch on" aria-label="启用满仓成交额条件"></button><div class="condition-fields"><select><option>两市成交额</option><option>上涨 / 下跌家数比</option><option>题材强度评分</option><option>有效买入策略数</option></select><select><option>高于 5 日均值</option><option>大于等于</option><option>不低于</option></select><input value="0%" aria-label="满仓成交额阈值"></div><button class="icon-btn remove-condition" title="删除满仓条件"><i data-lucide="x"></i></button></div>
+                      <div class="condition-row"><button class="condition-switch on" aria-label="启用满仓题材强度条件"></button><div class="condition-fields"><select><option>题材强度评分</option><option>上涨 / 下跌家数比</option><option>两市成交额</option><option>有效买入策略数</option></select><select><option>大于等于</option><option>大于</option><option>不低于</option></select><input value="80" aria-label="满仓题材强度阈值"></div><button class="icon-btn remove-condition" title="删除满仓条件"><i data-lucide="x"></i></button></div>
+                      <div class="condition-row"><button class="condition-switch on" aria-label="启用满仓策略确认条件"></button><div class="condition-fields"><select><option>有效买入策略数</option><option>环境连续确认次数</option><option>题材强度评分</option><option>A 股市场状态</option></select><select><option>大于等于</option><option>大于</option><option>不低于</option></select><input value="2" aria-label="满仓策略确认阈值"></div><button class="icon-btn remove-condition" title="删除满仓条件"><i data-lucide="x"></i></button></div>
+                      <div class="condition-row"><button class="condition-switch on" aria-label="启用满仓环境确认条件"></button><div class="condition-fields"><select><option>环境连续确认次数</option><option>有效买入策略数</option><option>题材强度评分</option><option>A 股市场状态</option></select><select><option>大于等于</option><option>大于</option><option>不低于</option></select><input value="2" aria-label="满仓环境确认阈值"></div><button class="icon-btn remove-condition" title="删除满仓条件"><i data-lucide="x"></i></button></div>
+                    </div>
+                    <div class="position-state-grid"><div class="position-state"><span>防守环境</span><strong>0% - 30%</strong></div><div class="position-state"><span>正常环境</span><strong>50% - 70%</strong></div><div class="position-state active"><span>强势环境</span><strong>80% - 100%</strong></div></div>
+                    <div class="full-position-summary"><span>最晚执行时间：14:00 · 满仓前需连续确认 2 次</span><span class="tag gray">当前阈值 6 / 6</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="condition-block" id="sellConditionBlock">
+                <div class="condition-block-header"><div><div class="condition-block-title"><i data-lucide="arrow-up-from-line"></i>卖出条件</div><div class="condition-block-subtitle">触发止盈、止损或策略失效信号</div></div><button class="condition-link" data-add-condition="sell"><i data-lucide="plus"></i>添加条件</button></div>
+                <div class="condition-block-body">
+                  <div class="condition-list" id="sellConditionList">
+                    <div class="condition-row"><button class="condition-switch on" aria-label="启用卖出条件"></button><div class="condition-fields"><select><option>止盈收益率</option><option>止损收益率</option><option>跌破支撑位</option><option>持仓天数</option></select><select><option>大于等于</option><option>大于</option><option>小于等于</option></select><input value="8%" aria-label="卖出条件阈值"></div><button class="icon-btn remove-condition" title="删除条件"><i data-lucide="x"></i></button></div>
+                    <div class="condition-row"><button class="condition-switch on" aria-label="启用卖出条件"></button><div class="condition-fields"><select><option>止损收益率</option><option>止盈收益率</option><option>跌破支撑位</option><option>持仓天数</option></select><select><option>小于等于</option><option>小于</option><option>大于等于</option></select><input value="-4%" aria-label="卖出条件阈值"></div><button class="icon-btn remove-condition" title="删除条件"><i data-lucide="x"></i></button></div>
+                  </div>
+                  <div class="sell-price-section">
+                    <div class="sell-price-heading"><div class="sell-price-label"><i data-lucide="badge-dollar-sign"></i><div><strong>卖出价格规则</strong><small>根据不同触发类型选择价格基准与卖出比例</small></div></div><span class="tag orange">价格触发</span></div>
+                    <div class="sell-price-list">
+                      <div class="sell-price-row"><button class="condition-switch on" aria-label="启用固定止损价格"></button><strong>固定止损<small>成本价基准</small></strong><select aria-label="固定止损价格基准"><option>成本价</option><option>持仓均价</option></select><input value="-4%" aria-label="固定止损比例"></div>
+                      <div class="sell-price-row"><button class="condition-switch on" aria-label="启用移动止盈价格"></button><strong>移动止盈<small>最高价基准</small></strong><select aria-label="移动止盈价格基准"><option>持仓最高价</option><option>当日最高价</option></select><input value="-3%" aria-label="移动止盈回撤比例"></div>
+                      <div class="sell-price-row"><button class="condition-switch on" aria-label="启用支撑破位价格"></button><strong>支撑破位<small>支撑位基准</small></strong><select aria-label="支撑破位确认方式"><option>有效跌破后卖出</option><option>跌破即卖出</option></select><input value="1 根 K 线" aria-label="支撑破位确认周期"></div>
+                    </div>
+                  </div>
+                  <div class="sell-price-section">
+                    <div class="sell-price-heading"><div class="sell-price-label"><i data-lucide="chart-no-axes-combined"></i><div><strong>分批止盈价格</strong><small>达到目标收益后分批锁定利润</small></div></div><span class="tag green">分批执行</span></div>
+                    <div class="sell-price-grid">
+                      <div class="sell-price-card"><label>第一止盈价</label><input type="number" value="5" min="0" aria-label="第一止盈比例"> %<small>卖出 30% 仓位</small></div>
+                      <div class="sell-price-card"><label>第二止盈价</label><input type="number" value="8" min="0" aria-label="第二止盈比例"> %<small>再卖出 30% 仓位</small></div>
+                      <div class="sell-price-card"><label>剩余仓位</label><input type="number" value="40" min="0" max="100" aria-label="剩余仓位比例"> %<small>交给移动止盈</small></div>
+                    </div>
+                  </div>
+                  <div class="sell-price-section">
+                    <div class="sell-price-heading"><div class="sell-price-label"><i data-lucide="send"></i><div><strong>挂单方式</strong><small>止损优先成交，止盈按目标价执行</small></div></div><span class="tag gray">执行参数</span></div>
+                    <div class="sell-order-grid">
+                      <div class="sell-order-item"><label>止损挂单</label><select aria-label="止损挂单方式"><option>对手价优先成交</option><option>最新价下浮</option><option>限价</option></select></div>
+                      <div class="sell-order-item"><label>止盈挂单</label><select aria-label="止盈挂单方式"><option>目标价限价</option><option>对手价优先成交</option><option>最新价</option></select></div>
+                      <div class="sell-order-item"><label>允许滑点</label><input type="number" value="1" min="0" max="5" aria-label="允许滑点跳数"> 跳</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="condition-footer"><button class="ghost-btn" id="resetConditionStrategy"><i data-lucide="rotate-ccw"></i>重置</button><button class="primary-btn" id="saveConditionStrategy"><i data-lucide="save"></i>保存条件设置</button></div>
+          </div>
+        </section>
+
+        <section id="watchlist" class="panel watch-panel"><div class="panel-header"><div><div class="panel-title">自选股与信号</div><div class="panel-subtitle">实时跟踪关注标的的价格、策略信号与预期收益</div></div><div class="filter-tools"><div class="table-tabs" id="groupTabs"><button class="table-tab active" data-table="all">全部标的</button><button class="table-tab" data-table="favorite">我的自选</button><button class="table-tab" id="strategyResultTab" data-table="strategy">策略命中</button><button class="table-tab" data-table="group:核心关注">核心关注</button><button class="table-tab" data-table="group:短线策略">短线策略</button><button class="table-tab" data-table="group:待观察">待观察</button><button class="new-group-btn" id="newGroupBtn"><i data-lucide="plus"></i>新建分组</button></div><button class="primary-btn" id="addStockBtn"><i data-lucide="plus"></i>添加股票</button></div></div><div class="table-wrap"><table><thead><tr><th>股票</th><th>最新价</th><th>涨跌幅</th><th>策略信号</th><th>信号强度</th><th>历史胜率</th><th>预期收益</th><th>分组</th><th>操作</th></tr></thead><tbody id="stockTable"><tr data-favorite="true" data-group="核心关注" data-strategy="趋势加速反转" data-search="宁德时代 300750"><td><div class="stock-cell"><button class="stock-star active" title="取消自选"><i data-lucide="star"></i></button><div><div class="stock-name">宁德时代</div><div class="stock-code">300750 · 电池</div><span class="stock-group">核心关注</span></div></div></td><td class="price">268.40</td><td class="up">+3.16%</td><td><span class="tag green">趋势加速反转</span></td><td><span class="up">强 · 92</span></td><td>74.2%</td><td class="up">+12.6%</td><td><select class="row-group" aria-label="宁德时代分组"><option selected>核心关注</option><option>短线策略</option><option>待观察</option></select></td><td><button class="icon-btn row-detail" title="查看详情"><i data-lucide="arrow-up-right"></i></button></td></tr><tr data-favorite="true" data-group="短线策略" data-strategy="涨停回踩" data-search="中际旭创 300308"><td><div class="stock-cell"><button class="stock-star active" title="取消自选"><i data-lucide="star"></i></button><div><div class="stock-name">中际旭创</div><div class="stock-code">300308 · 通信设备</div><span class="stock-group">短线策略</span></div></div></td><td class="price">142.88</td><td class="up">+2.48%</td><td><span class="tag orange">涨停回踩</span></td><td><span class="up">强 · 86</span></td><td>68.5%</td><td class="up">+9.3%</td><td><select class="row-group" aria-label="中际旭创分组"><option>核心关注</option><option selected>短线策略</option><option>待观察</option></select></td><td><button class="icon-btn row-detail" title="查看详情"><i data-lucide="arrow-up-right"></i></button></td></tr><tr data-favorite="false" data-group="核心关注" data-strategy="多周期共振" data-search="贵州茅台 600519"><td><div class="stock-cell"><button class="stock-star" title="加入自选"><i data-lucide="star"></i></button><div><div class="stock-name">贵州茅台</div><div class="stock-code">600519 · 白酒</div><span class="stock-group">核心关注</span></div></div></td><td class="price">1,482.00</td><td class="down">-0.42%</td><td><span class="tag blue">多周期共振</span></td><td><span class="up">中 · 78</span></td><td>63.7%</td><td class="up">+6.8%</td><td><select class="row-group" aria-label="贵州茅台分组"><option selected>核心关注</option><option>短线策略</option><option>待观察</option></select></td><td><button class="icon-btn row-detail" title="查看详情"><i data-lucide="arrow-up-right"></i></button></td></tr><tr data-favorite="true" data-group="核心关注" data-strategy="放量突破" data-search="工业富联 601138"><td><div class="stock-cell"><button class="stock-star active" title="取消自选"><i data-lucide="star"></i></button><div><div class="stock-name">工业富联</div><div class="stock-code">601138 · 消费电子</div><span class="stock-group">核心关注</span></div></div></td><td class="price">24.73</td><td class="up">+1.98%</td><td><span class="tag green">放量突破</span></td><td><span class="up">中 · 75</span></td><td>70.1%</td><td class="up">+8.1%</td><td><select class="row-group" aria-label="工业富联分组"><option selected>核心关注</option><option>短线策略</option><option>待观察</option></select></td><td><button class="icon-btn row-detail" title="查看详情"><i data-lucide="arrow-up-right"></i></button></td></tr><tr data-favorite="true" data-group="待观察" data-strategy="回踩支撑" data-search="药明康德 603259"><td><div class="stock-cell"><button class="stock-star active" title="取消自选"><i data-lucide="star"></i></button><div><div class="stock-name">药明康德</div><div class="stock-code">603259 · 医疗服务</div><span class="stock-group">待观察</span></div></div></td><td class="price">45.31</td><td class="up">+1.27%</td><td><span class="tag gray">回踩支撑</span></td><td><span class="up">中 · 71</span></td><td>65.4%</td><td class="up">+5.4%</td><td><select class="row-group" aria-label="药明康德分组"><option>核心关注</option><option>短线策略</option><option selected>待观察</option></select></td><td><button class="icon-btn row-detail" title="查看详情"><i data-lucide="arrow-up-right"></i></button></td></tr><tr data-favorite="false" data-group="待观察" data-strategy="观察中" data-search="阳光电源 300274"><td><div class="stock-cell"><button class="stock-star" title="加入自选"><i data-lucide="star"></i></button><div><div class="stock-name">阳光电源</div><div class="stock-code">300274 · 光伏设备</div><span class="stock-group">待观察</span></div></div></td><td class="price">91.62</td><td class="down">-1.04%</td><td><span class="tag gray">观察中</span></td><td><span>弱 · 54</span></td><td>58.6%</td><td>--</td><td><select class="row-group" aria-label="阳光电源分组"><option>核心关注</option><option>短线策略</option><option selected>待观察</option></select></td><td><button class="icon-btn row-detail" title="查看详情"><i data-lucide="arrow-up-right"></i></button></td></tr></tbody></table></div><div class="table-note"><span id="tableResult">显示 6 / 6 只股票 · 数据每 5 秒自动刷新</span><button id="viewAllBtn">查看完整列表 <i data-lucide="arrow-right"></i></button></div></section>
+
+        <section id="automation" class="panel auto-panel"><div class="panel-header"><div><div class="panel-title">自动化交易</div><div class="panel-subtitle">按策略信号自动执行下单，实时查看交易结果</div></div><button class="ghost-btn" id="riskBtn"><i data-lucide="shield"></i>风险配置</button></div><div class="panel-body"><div class="automation-grid"><div><div class="auto-status"><button class="switch on" id="autoSwitch" aria-label="切换自动交易"></button><div><strong id="autoTitle">自动交易运行中</strong><span id="autoDesc">今日已执行 8 笔 · 下单额度 ¥ 50,000 / 笔</span></div><span class="tag green" style="margin-left:auto">实盘</span></div><div class="performance-grid"><div class="perf-item"><label>今日收益</label><strong class="up">+¥ 2,864</strong></div><div class="perf-item"><label>今日胜率</label><strong>75.0%</strong></div><div class="perf-item"><label>持仓标的</label><strong>12 <small style="font-size:11px;color:var(--muted);font-weight:400">/ 20</small></strong></div></div></div><div class="auto-log"><div class="panel-title" style="font-size:12px;margin-bottom:6px">最近执行记录</div><div class="log-item"><div class="log-time">09:36:12</div><div class="log-main"><strong class="up">买入 · 宁德时代</strong><span>趋势加速反转 · 置信度 92%</span></div></div><div class="log-item"><div class="log-time">09:31:47</div><div class="log-main"><strong class="up">买入 · 工业富联</strong><span>放量突破 · 置信度 75%</span></div></div><div class="log-item"><div class="log-time">09:18:09</div><div class="log-main"><strong class="down">卖出 · 亿纬锂能</strong><span>止盈触发 · 收益 +6.8%</span></div></div></div></div></div></section>
+      </div>
+    </main>
+  </div>
+  <div class="auth-screen" id="authScreen" aria-hidden="true">
+    <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <div class="auth-top">
+        <div class="auth-brand"><div class="auth-brand-mark"><i data-lucide="activity"></i></div><div><strong>QuantPilot</strong><span>量化交易工作台</span></div></div>
+        <h1 class="auth-title" id="authTitle">登录账户</h1>
+        <p class="auth-subtitle">登录后继续管理你的策略、股票池与自动交易设置。</p>
+      </div>
+      <form class="auth-form" id="loginForm">
+        <div class="auth-field"><label for="loginAccount">账号</label><input id="loginAccount" autocomplete="username" placeholder="请输入账号"></div>
+        <div class="auth-field"><label for="loginPassword">密码</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="请输入密码"></div>
+        <div class="auth-options"><label><input id="rememberLogin" type="checkbox" checked>记住登录状态</label><button type="button" id="forgotPassword">忘记密码</button></div>
+        <button class="primary-btn auth-submit" type="submit"><i data-lucide="log-in"></i>登录</button>
+        <div class="auth-hint">演示环境：填写任意账号和密码即可登录</div>
+      </form>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <div class="modal-backdrop" id="modalBackdrop"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="panel-header"><div><div class="panel-title" id="modalTitle">新建策略</div><div class="panel-subtitle" id="modalSubtitle">创建一个可复用的筛选策略</div></div><button class="icon-btn" id="closeModal" title="关闭"><i data-lucide="x"></i></button></div><div class="modal-body"><div class="form-field"><label for="strategyName">策略名称</label><input id="strategyName" placeholder="例如：低波动趋势跟随"></div><div class="form-field"><label for="strategyCode">目标股票代码</label><input id="strategyCode" inputmode="numeric" maxlength="6" placeholder="可选，例如 300750"></div><div class="form-field"><label for="strategyType">策略模板</label><select id="strategyType"><option>趋势突破</option><option>均线反转</option><option>基本面选股</option><option>自定义条件</option></select></div><div class="form-field"><label for="strategyRisk">风险偏好</label><select id="strategyRisk"><option>稳健 · 最大回撤 8%</option><option>平衡 · 最大回撤 15%</option><option>进取 · 最大回撤 25%</option></select></div></div><div class="modal-actions"><button class="ghost-btn" id="cancelModal">取消</button><button class="primary-btn" id="saveStrategy"><i data-lucide="check"></i>保存策略</button></div></div></div>
+  <div class="modal-backdrop" id="groupModalBackdrop"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="groupModalTitle"><div class="panel-header"><div><div class="panel-title" id="groupModalTitle">新建自选分组</div><div class="panel-subtitle">用分组整理不同交易计划下的股票</div></div><button class="icon-btn" id="closeGroupModal" title="关闭"><i data-lucide="x"></i></button></div><div class="modal-body"><div class="form-field"><label for="groupName">分组名称</label><input id="groupName" placeholder="例如：AI 算力、低波红利、重点观察"></div></div><div class="modal-actions"><button class="ghost-btn" id="cancelGroupModal">取消</button><button class="primary-btn" id="saveGroup"><i data-lucide="check"></i>创建分组</button></div></div></div>
+  <div class="modal-backdrop" id="detailModalBackdrop"><div class="modal detail-modal" role="dialog" aria-modal="true" aria-labelledby="detailStockName"><div class="panel-header"><div class="detail-header-info"><div class="detail-symbol"><i data-lucide="candlestick-chart"></i></div><div><div class="detail-name" id="detailStockName">宁德时代</div><div class="detail-code" id="detailStockCode">300750 · 电池</div></div></div><button class="icon-btn" id="closeDetailModal" title="关闭"><i data-lucide="x"></i></button></div><div class="detail-body"><div class="detail-metrics"><strong class="detail-price" id="detailPrice">268.40</strong><span class="detail-change up" id="detailChange">+3.16%</span><span class="tag green" id="detailSignal">趋势加速反转</span><span class="detail-meta" id="detailMeta">分时 · 09:42:18 · 数据延迟 1.2s</span></div><div class="detail-chart-wrap"><div class="detail-chart-grid"><span></span><span></span><span></span><span></span></div><svg class="detail-chart-svg" viewBox="0 0 760 200" preserveAspectRatio="none" aria-label="个股分时图"><path d="M0 150 C34 152 55 137 80 143 S120 125 146 132 S175 101 203 111 S240 118 268 106 S302 94 326 100 S358 79 384 87 S420 74 450 82 S478 58 508 67 S547 44 576 54 S610 50 636 38 S675 52 700 29 S730 35 760 20" fill="none" stroke="#3974c5" stroke-width="2.2" vector-effect="non-scaling-stroke"/><path d="M0 154 C40 157 87 148 126 153 S200 144 268 149 S337 132 384 140 S457 127 508 132 S578 118 636 124 S704 109 760 114" fill="none" stroke="#b8c4bd" stroke-width="1.2" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/><circle cx="203" cy="111" r="5" fill="#16835f" stroke="#fff" stroke-width="2"/><text x="193" y="96" class="bs-marker buy">B</text><circle cx="508" cy="67" r="5" fill="#cc5d50" stroke="#fff" stroke-width="2"/><text x="500" y="53" class="bs-marker sell">S</text><circle cx="700" cy="29" r="5" fill="#16835f" stroke="#fff" stroke-width="2"/><text x="691" y="15" class="bs-marker buy">B</text></svg><div class="detail-axis"><span>09:30</span><span>10:00</span><span>10:30</span><span>11:00</span><span>13:30</span><span>14:00</span><span>15:00</span></div></div><div class="detail-lower"><div class="detail-card"><div class="detail-card-title">B/S 交易点</div><div class="bs-list" id="bsPoints"><div class="bs-row"><span class="bs-badge buy">B</span><div class="bs-row-main"><strong>09:47 · 252.60</strong><span>趋势加速反转 · 置信度 88%</span></div><span class="bs-row-result up">+6.25%</span></div><div class="bs-row"><span class="bs-badge sell">S</span><div class="bs-row-main"><strong>11:06 · 263.40</strong><span>止盈信号 · 持仓 79 分钟</span></div><span class="bs-row-result up">+4.27%</span></div><div class="bs-row"><span class="bs-badge buy">B</span><div class="bs-row-main"><strong>13:42 · 265.20</strong><span>放量突破 · 置信度 92%</span></div><span class="bs-row-result">持仓中</span></div></div></div><div class="detail-card"><div class="detail-card-title">策略诊断</div><div class="detail-signal-list"><div class="detail-signal-item"><span>历史胜率</span><strong id="detailWin">74.2%</strong></div><div class="detail-signal-item"><span>当日成交量</span><strong>+38.6%</strong></div><div class="detail-signal-item"><span>支撑位 / 压力位</span><strong>260.00 / 275.80</strong></div><div class="detail-signal-item"><span>策略建议</span><strong class="up">持有观察</strong></div></div></div></div></div></div></div>
+  <script>
+    const $ = (selector, root = document) => root.querySelector(selector);
+    const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+    const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    const toast = (message) => { const el = $('#toast'); el.textContent = message; el.classList.add('show'); clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => el.classList.remove('show'), 2300); };
+    const refreshIcons = () => { if (window.lucide) lucide.createIcons(); };
+    refreshIcons();
+    const upgradeCodeEditors = () => {
+      const codeMount = $('#codeStrategyMount');
+      const codeBlock = document.querySelector('.filter-panel .code-filter');
+      if (codeMount && codeBlock && !codeMount.contains(codeBlock)) codeMount.append(codeBlock);
+      const resultMount = $('#codeResultMount');
+      const resultBlock = document.querySelector('.filter-panel .filter-results');
+      if (resultMount && resultBlock && !resultMount.contains(resultBlock)) resultMount.append(resultBlock);
+      const resultHeading = $('#filterResults') && $('.result-heading', $('#filterResults'));
+      if (resultHeading && !$('#batchAddStock')) {
+        const batchTools = document.createElement('div');
+        batchTools.className = 'batch-tools';
+        batchTools.innerHTML = '<span class="batch-count" id="selectedResultCount">已选 0 条</span><select class="batch-group" id="batchGroup" aria-label="批量自选分组"><option>核心关注</option><option>短线策略</option><option>待观察</option></select><button class="ghost-btn" id="selectAllResults"><i data-lucide="check-square"></i>全选</button><button class="ghost-btn" id="batchAddStock" disabled><i data-lucide="star"></i>批量加入自选</button>';
+        resultHeading.append(batchTools);
+        $$('.filter-result-row', $('#filterResults')).forEach(row => {
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox'; checkbox.className = 'result-select'; checkbox.setAttribute('aria-label', `选择${row.dataset.name}`);
+          row.prepend(checkbox);
+        });
+        const updateBatchSelection = () => {
+          const selected = $$('.result-select:checked', $('#filterResults')).length;
+          $('#selectedResultCount').textContent = `已选 ${selected} 条`;
+          $('#batchAddStock').disabled = selected === 0;
+        };
+        $$('.result-select', $('#filterResults')).forEach(input => input.addEventListener('change', updateBatchSelection));
+        $('#selectAllResults').addEventListener('click', () => {
+          const visibleRows = $$('.filter-result-row', $('#filterResults')).filter(row => !row.hidden);
+          const shouldSelect = visibleRows.some(row => !$('.result-select', row).checked);
+          visibleRows.forEach(row => { $('.result-select', row).checked = shouldSelect; });
+          updateBatchSelection();
+        });
+        $('#batchAddStock').addEventListener('click', () => {
+          const selectedRows = $$('.filter-result-row', $('#filterResults')).filter(row => $('.result-select', row).checked);
+          const group = $('#batchGroup').value;
+          selectedRows.forEach(row => { $('.result-group', row).value = group; addResultToWatchlist(row, $('.add-filter-stock', row)); $('.result-select', row).checked = false; });
+          updateBatchSelection();
+        });
+      }
+      const codeInput = $('#codeFilter');
+      if (codeInput && codeInput.tagName !== 'TEXTAREA') {
+        const container = codeInput.parentElement;
+        const label = container.querySelector('label[for="codeFilter"]');
+        const hint = container.querySelector('.code-filter-hint');
+        const clear = $('#clearCodeFilter');
+        const generate = $('#generateCodeStrategy');
+        const editor = document.createElement('textarea');
+        editor.id = 'codeFilter';
+        editor.className = 'code-editor';
+        editor.spellcheck = false;
+        editor.value = '# 示例：趋势向上 + 放量突破\nscreen(\n  market = "A",\n  close_gt_ma = 20,\n  volume_ratio_gt = 1.5,\n  roe_gt = 0.10\n)';
+        const shell = document.createElement('div'); shell.className = 'code-editor-shell';
+        const footer = document.createElement('div'); footer.className = 'code-editor-footer';
+        const actions = document.createElement('div'); actions.className = 'code-editor-actions';
+        hint.textContent = 'Python / QuantPilot DSL · 可保存为策略';
+        label.textContent = '筛选代码';
+        const run = document.createElement('button'); run.className = 'ghost-btn'; run.id = 'runCode'; run.innerHTML = '<i data-lucide="play"></i>运行代码';
+        actions.append(clear, generate, run); footer.append(hint, actions); shell.append(editor, footer); container.replaceChildren(label, shell);
+      }
+      const strategyInput = $('#strategyCode');
+      if (strategyInput && strategyInput.tagName !== 'TEXTAREA') {
+        const editor = document.createElement('textarea');
+        editor.id = 'strategyCode'; editor.placeholder = 'screen(\\n  close_gt_ma = 20,\\n  volume_ratio_gt = 1.5\\n)'; editor.spellcheck = false;
+        strategyInput.replaceWith(editor);
+        const label = document.querySelector('label[for="strategyCode"]');
+        if (label) label.textContent = '策略代码';
+      }
+      refreshIcons();
+    };
+    upgradeCodeEditors();
+
+    const codeStrategyPools = {
+      trend: { name: '趋势加速反转', type: '趋势策略', pool: '核心关注池', count: 18, desc: '趋势向上、放量突破', stocks: [['宁德时代', '300750', '电池', '+3.16%'], ['工业富联', '601138', '消费电子', '+1.98%'], ['比亚迪', '002594', '汽车整车', '+2.36%']] },
+      pullback: { name: '涨停回踩 · 低吸', type: '短线策略', pool: '短线策略池', count: 12, desc: '强势回踩、量价修复', stocks: [['中际旭创', '300308', '通信设备', '+2.48%'], ['立讯精密', '002475', '消费电子', '+1.76%'], ['亿纬锂能', '300014', '电池', '-0.68%']] },
+      resonance: { name: '多周期共振', type: '稳健策略', pool: '稳健观察池', count: 9, desc: '日线与周线趋势一致', stocks: [['贵州茅台', '600519', '白酒', '-0.42%'], ['药明康德', '603259', '医疗服务', '+1.27%'], ['阳光电源', '300274', '光伏设备', '-1.04%']] },
+      breakout: { name: '放量突破', type: '突破策略', pool: '突破候选池', count: 15, desc: '成交量放大、突破压力位', stocks: [['工业富联', '601138', '消费电子', '+1.98%'], ['比亚迪', '002594', '汽车整车', '+2.36%'], ['立讯精密', '002475', '消费电子', '+1.76%']] }
+    };
+    const codeStrategyPoolMount = $('#codeStrategyPoolMount');
+    const renderCodeStrategyPool = key => {
+      const selected = codeStrategyPools[key] || codeStrategyPools.trend;
+      const strategyItems = Object.entries(codeStrategyPools).map(([itemKey, item]) => '<button class="strategy-pool-item ' + (itemKey === key ? 'active' : '') + '" data-pool-key="' + itemKey + '"><span class="strategy-pool-icon"><i data-lucide="layers-3"></i></span><span><span class="strategy-pool-name">' + escapeHtml(item.name) + '</span><span class="strategy-pool-meta">' + escapeHtml(item.type) + ' · ' + escapeHtml(item.desc) + '</span></span><span class="strategy-pool-count">' + item.count + '<small>只股票</small></span></button>').join('');
+      const stockRows = selected.stocks.map(stock => '<tr><td><div class="stock-name">' + escapeHtml(stock[0]) + '</div><div class="stock-code">' + escapeHtml(stock[1]) + ' · ' + escapeHtml(stock[2]) + '</div></td><td>' + escapeHtml(stock[3]) + '</td><td><span class="tag ' + (stock[3].startsWith('-') ? 'gray' : 'green') + '">' + escapeHtml(selected.name) + '</span></td></tr>').join('');
+      codeStrategyPoolMount.innerHTML = '<div class="strategy-pool-zone"><div class="strategy-pool-heading"><div><div class="panel-title"><i data-lucide="layers-3"></i>策略与股票池</div><div class="panel-subtitle">查看不同代码策略对应的股票池与当前示例标的</div></div><span class="tag blue">共 ' + Object.keys(codeStrategyPools).length + ' 个策略</span></div><div class="strategy-pool-layout"><div class="strategy-pool-list">' + strategyItems + '</div><div class="stock-pool-preview"><div class="stock-pool-header"><strong>' + escapeHtml(selected.pool) + '</strong><span>' + selected.count + ' 只 · ' + escapeHtml(selected.desc) + '</span></div><table class="stock-pool-table"><thead><tr><th>股票</th><th>涨跌幅</th><th>所属策略</th></tr></thead><tbody>' + stockRows + '</tbody></table></div></div></div>';
+      refreshIcons();
+    };
+    renderCodeStrategyPool('trend');
+    codeStrategyPoolMount.addEventListener('click', event => {
+      const item = event.target.closest('.strategy-pool-item');
+      if (item) renderCodeStrategyPool(item.dataset.poolKey);
+    });
+
+    const titles = { overview: '市场总览', filter: '策略筛选', 'history-backtest': '历史回测', 'code-strategy': '代码筛选', settings: '买入/卖出条件设置', watchlist: '我的自选', automation: '自动交易' };
+    const pageGroups = {
+      overview: ['#overview', '.stats-grid', '.grid-hero'],
+      filter: ['#filter'],
+      'history-backtest': ['#history-backtest'],
+      'code-strategy': ['#code-strategy'],
+      settings: ['#settings', '#condition-strategy'],
+      watchlist: ['#watchlist'],
+      automation: ['#automation']
+    };
+    const pageElements = [...new Set(Object.values(pageGroups).flatMap(selectors => selectors.flatMap(selector => $$(selector))))];
+    const settingsSubnav = $('#settingsSubnav');
+    const setActivePage = (target, updateUrl = true) => {
+      const page = pageGroups[target] ? target : target === 'condition-strategy' ? 'settings' : 'overview';
+      const visibleElements = pageGroups[page].flatMap(selector => $$(selector));
+      pageElements.forEach(element => element.classList.toggle('page-hidden', !visibleElements.includes(element)));
+      $$('.nav-item[data-target]').forEach(item => item.classList.toggle('active', item.dataset.target === page));
+      settingsSubnav.classList.toggle('open', page === 'settings');
+      $('#pageTitle').textContent = titles[page];
+      $('.main').scrollTo({ top: 0, behavior: 'smooth' });
+      if (updateUrl && location.hash !== `#${page}`) history.pushState({ page }, '', `#${page}`);
+    };
+    $$('.nav-item[data-target]').forEach(item => item.addEventListener('click', () => setActivePage(item.dataset.target)));
+    window.addEventListener('hashchange', () => setActivePage(location.hash.slice(1), false));
+    window.addEventListener('popstate', () => setActivePage(location.hash.slice(1), false));
+    setActivePage(location.hash.slice(1) || 'overview', false);
+    const conditionPanel = $('#condition-strategy');
+    const settingsSections = { buy: '#buyConditionBlock', sell: '#sellConditionBlock' };
+    const conditionSectionMeta = {
+      buy: { key: 'buy', title: '买入条件', subtitle: '配置生成买入信号所需满足的市场与策略条件' },
+      sell: { key: 'sell', title: '卖出条件', subtitle: '配置止盈、止损与策略失效的触发条件' }
+    };
+    const showConditionSection = section => {
+      const meta = conditionSectionMeta[section] || conditionSectionMeta.buy;
+      $('.condition-layout', conditionPanel).dataset.section = meta.key;
+      $('.panel-title', conditionPanel).textContent = meta.title;
+      $('.panel-subtitle', conditionPanel).textContent = meta.subtitle;
+    };
+    const focusSettingsSection = section => {
+      setActivePage('settings');
+      $$('.settings-subnav button').forEach(button => button.classList.toggle('active', button.dataset.settingsSection === section));
+      showConditionSection(section);
+      const target = $(settingsSections[section] || settingsSections.buy);
+      setTimeout(() => target?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+    };
+    settingsSubnav.addEventListener('click', event => {
+      const item = event.target.closest('[data-settings-section]');
+      if (item) focusSettingsSection(item.dataset.settingsSection);
+    });
+    $$('.nav-item[data-target="settings"]').forEach(item => item.addEventListener('click', () => focusSettingsSection('buy')));
+    showConditionSection('buy');
+
+    const mappingList = $('#strategyMappingList');
+    const codeGroupStrategyMount = $('#codeGroupStrategyMount');
+    const mappingBlock = $('#conditionMappingBlock');
+    if (codeGroupStrategyMount && mappingBlock) codeGroupStrategyMount.append(mappingBlock);
+    const mappingRowTemplate = () => '<tr><td><select class="map-select"><option>趋势加速反转</option><option>涨停回踩 · 低吸</option><option>多周期共振</option><option>放量突破</option></select></td><td><select class="map-select"><option>核心关注</option><option>短线策略</option><option>待观察</option></select></td><td><input class="map-limit" type="number" value="5" min="1" aria-label="策略入选上限"></td><td><input class="map-weight" type="number" value="20" min="0" max="100" aria-label="策略权重">%</td><td><button class="icon-btn remove-condition" title="删除选股策略"><i data-lucide="trash-2"></i></button></td></tr>';
+    const conditionRowTemplate = type => {
+      const fields = type === 'buy'
+        ? '<option>外围环境</option><option>A 股市场状态</option><option>题材强度评分</option><option>题材龙头状态</option><option>两市成交额</option><option>上涨 / 下跌家数比</option>'
+        : '<option>止盈收益率</option><option>止损收益率</option><option>跌破均线</option><option>持仓天数</option>';
+      const label = type === 'buy' ? '买入' : '卖出';
+      return '<div class="condition-row"><button class="condition-switch on" aria-label="启用' + label + '条件"></button><div class="condition-fields"><select>' + fields + '</select><select><option>大于等于</option><option>大于</option><option>小于等于</option></select><input value="' + (type === 'buy' ? '60' : '10') + '" aria-label="' + label + '条件阈值"></div><button class="icon-btn remove-condition" title="删除条件"><i data-lucide="x"></i></button></div>';
+    };
+    const updateMappingHint = () => { $('#mappingHint').textContent = '已配置 ' + mappingList.children.length + ' 个选股策略 · 每日收盘前更新'; };
+    const markConditionDraft = () => { $('#conditionStatusText').textContent = '草稿 · 有未保存修改'; };
+    document.addEventListener('click', event => {
+      if (!event.target.closest('#condition-strategy, #codeGroupStrategyMount')) return;
+      const mode = event.target.closest('.condition-mode button');
+      if (mode) {
+        $$('.condition-mode button', conditionPanel).forEach(button => button.classList.toggle('active', button === mode));
+        markConditionDraft();
+        return;
+      }
+      const add = event.target.closest('[data-add-condition]');
+      if (add) {
+        $('#' + add.dataset.addCondition + 'ConditionList').insertAdjacentHTML('beforeend', conditionRowTemplate(add.dataset.addCondition));
+        refreshIcons();
+        markConditionDraft();
+        return;
+      }
+      const switchButton = event.target.closest('.condition-switch');
+      if (switchButton) {
+        switchButton.classList.toggle('on');
+        const parentRow = switchButton.closest('.condition-row, .buy-strategy-row, .sell-price-row');
+        if (parentRow) parentRow.classList.toggle('disabled', !switchButton.classList.contains('on'));
+        markConditionDraft();
+        return;
+      }
+      const remove = event.target.closest('.remove-condition');
+      if (remove) {
+        const row = remove.closest('tr, .condition-row');
+        const list = row.parentElement;
+        if (list.children.length <= 1) { toast('至少保留一条条件'); return; }
+        row.remove();
+        updateMappingHint();
+        markConditionDraft();
+      }
+    });
+    conditionPanel.addEventListener('change', markConditionDraft);
+    $('#conditionStrategyName').addEventListener('input', markConditionDraft);
+    $('#addBuyStrategy').addEventListener('click', () => {
+      $('#buyStrategyList').insertAdjacentHTML('beforeend', '<div class="buy-strategy-row"><button class="condition-switch on" aria-label="启用自定义买入策略"></button><div class="buy-strategy-main"><div class="buy-strategy-name">自定义买入策略</div><div class="buy-strategy-desc">根据当前市场与题材条件配置独立买入逻辑</div><div class="buy-strategy-meta"><span>待配置条件</span><span>待配置时段</span></div></div><div class="buy-strategy-options"><label>优先级<select aria-label="自定义买入策略优先级"><option>1</option><option selected>2</option><option>3</option></select></label><label>首次仓位<input type="number" value="20" min="0" max="100" aria-label="自定义买入策略首次仓位">%</label></div></div>');
+      refreshIcons();
+      markConditionDraft();
+      toast('已添加买入策略');
+    });
+    $('#addStrategyMapping').addEventListener('click', () => { mappingList.insertAdjacentHTML('beforeend', mappingRowTemplate()); updateMappingHint(); refreshIcons(); markConditionDraft(); });
+    $('#syncCodeStrategy').addEventListener('click', () => { toast('已同步 4 个代码策略，可继续调整目标分组'); markConditionDraft(); });
+    $('#saveConditionStrategy').addEventListener('click', () => {
+      const name = $('#conditionStrategyName').value.trim();
+      if (!name) { $('#conditionStrategyName').focus(); toast('请先填写策略名称'); return; }
+      $('#conditionStatusText').textContent = '已保存 · 刚刚';
+      toast('条件设置「' + name + '」已保存');
+    });
+    $('#resetConditionStrategy').addEventListener('click', () => {
+      $('#conditionStrategyName').value = '默认交易条件';
+      $$('.condition-mode button', conditionPanel).forEach(button => button.classList.toggle('active', button.dataset.mode === 'and'));
+      mappingList.innerHTML = mappingRowTemplate() + mappingRowTemplate();
+      $('#buyConditionList').innerHTML = conditionRowTemplate('buy') + conditionRowTemplate('buy');
+      $('#sellConditionList').innerHTML = conditionRowTemplate('sell') + conditionRowTemplate('sell');
+      updateMappingHint();
+      $('#conditionStatusText').textContent = '草稿 · 未保存';
+      refreshIcons();
+      toast('买入/卖出条件已重置');
+    });
+
+    let backtestStockPool = new Set();
+    const stockCodeFromRow = row => (row?.dataset.search.match(/\d{6}/) || [''])[0];
+    const favoriteStockRows = () => $$('#stockTable tr[data-favorite="true"]');
+    const updateBacktestTable = () => {
+      const selectedCodes = backtestStockPool;
+      $$('#backtestTable tr').forEach(row => {
+        const code = $('.stock-code', row)?.textContent.match(/\d{6}/)?.[0] || '';
+        row.hidden = !selectedCodes.has(code);
+      });
+    };
+    const renderBacktestStockPool = () => {
+      const favorites = favoriteStockRows();
+      const favoriteCodes = new Set(favorites.map(stockCodeFromRow));
+      backtestStockPool = new Set([...backtestStockPool].filter(code => favoriteCodes.has(code)));
+      const select = $('#backtestFavoriteSelect');
+      const selectedCodes = backtestStockPool;
+      select.innerHTML = '<option value="">选择自选股</option>' + favorites.filter(row => !selectedCodes.has(stockCodeFromRow(row))).map(row => `<option value="${stockCodeFromRow(row)}">${escapeHtml($('.stock-name', row).textContent.trim())} · ${stockCodeFromRow(row)}</option>`).join('');
+      $('#backtestStockCount').textContent = `已选 ${selectedCodes.size} 只`;
+      $('#backtestPoolList').innerHTML = selectedCodes.size ? favorites.filter(row => selectedCodes.has(stockCodeFromRow(row))).map(row => `<span class="backtest-pool-item">${escapeHtml($('.stock-name', row).textContent.trim())} · ${stockCodeFromRow(row)}<button type="button" class="remove-backtest-stock" data-code="${stockCodeFromRow(row)}" title="移出股票池"><i data-lucide="x"></i></button></span>`).join('') : '<span class="backtest-pool-empty">暂未选择股票，请从上方自选股中添加</span>';
+      updateBacktestTable();
+      refreshIcons();
+    };
+    favoriteStockRows().forEach(row => backtestStockPool.add(stockCodeFromRow(row)));
+    renderBacktestStockPool();
+    $('#addBacktestStock').addEventListener('click', () => {
+      const code = $('#backtestFavoriteSelect').value;
+      if (!code) { toast('请先选择要加入股票池的自选股'); return; }
+      backtestStockPool.add(code);
+      renderBacktestStockPool();
+      toast('已加入历史回测股票池');
+    });
+    $('#backtestPoolList').addEventListener('click', event => {
+      const button = event.target.closest('.remove-backtest-stock');
+      if (!button) return;
+      backtestStockPool.delete(button.dataset.code);
+      renderBacktestStockPool();
+      toast('已移出历史回测股票池');
+    });
+    $$('.range-tab').forEach(tab => tab.addEventListener('click', () => {
+      $$('.range-tab').forEach(item => item.classList.toggle('active', item === tab));
+      const end = '2026-08-07';
+      const starts = { '1Y': '2025-08-07', YTD: '2026-01-01', '3Y': '2023-08-07' };
+      if (starts[tab.dataset.range]) { $('#backtestStart').value = starts[tab.dataset.range]; $('#backtestEnd').value = end; }
+      toast(tab.dataset.range === 'custom' ? '请设置自定义回测日期' : `已切换到${tab.textContent}区间`);
+    }));
+    $('#runBacktest').addEventListener('click', () => {
+      const selected = [...backtestStockPool];
+      if (!selected.length) { toast('请至少加入一只自选股到股票池'); return; }
+      const start = $('#backtestStart').value;
+      const end = $('#backtestEnd').value;
+      if (!start || !end || start >= end) { toast('请检查回测日期范围'); return; }
+      $('#backtestRunState').textContent = '计算中';
+      $('#backtestRunState').className = 'tag orange';
+      $('#runBacktest').disabled = true;
+      updateBacktestTable();
+      setTimeout(() => {
+        const timing = $('#sellTiming').value;
+        $('#backtestRunState').textContent = '已完成';
+        $('#backtestRunState').className = 'tag green';
+        $('#backtestStatus').textContent = `最近运行：${end} · ${timing}`;
+        $('#runBacktest').disabled = false;
+        toast(`回测完成：${selected.length} 只股票，已生成买卖明细`);
+      }, 650);
+    });
+    $$('.nav-item[data-action]').forEach(item => item.addEventListener('click', () => toast(item.dataset.action === 'settings' ? '参数设置面板即将开放' : '帮助中心即将开放')));
+
+    $$('.chips').forEach(group => group.addEventListener('click', event => {
+      const chip = event.target.closest('.chip');
+      if (!chip) return;
+      chip.classList.toggle('selected');
+      $('#selectedFilterCount').textContent = $$('.chip.selected').length;
+    }));
+    $('#runScan').addEventListener('click', () => { toast('筛选完成，找到 37 只符合条件的股票'); $('#runScan').innerHTML = '<i data-lucide="check"></i>已完成'; refreshIcons(); setTimeout(() => { $('#runScan').innerHTML = '<i data-lucide="scan-line"></i>运行筛选'; refreshIcons(); }, 1800); });
+    $('#clearFilter').addEventListener('click', () => { $$('.chip').forEach(chip => chip.classList.remove('selected')); $('#selectedFilterCount').textContent = '0'; toast('已清除筛选条件'); });
+
+    const groups = new Set(['核心关注', '短线策略', '待观察']);
+    let activeTableFilter = 'all';
+    let strategyFilterActive = false;
+    const getSelectedStrategies = () => $$('.strategy-check:checked').map(input => input.dataset.strategy || input.closest('.strategy-row').querySelector('.strategy-name').textContent.trim());
+    const updateStrategyCount = () => { $('#selectedStrategyCount').textContent = $$('.strategy-check:checked').length; };
+    const updateWatchCount = () => { $('#watchCount').textContent = $$('#stockTable tr[data-favorite="true"]').length; };
+    const updateGroupOptions = () => {
+      const options = [...groups].map(group => `<option value="${escapeHtml(group)}">${escapeHtml(group)}</option>`).join('');
+      $$('.result-group, .row-group, #batchGroup').forEach(select => { const current = select.value; select.innerHTML = options; select.value = groups.has(current) ? current : [...groups][0]; });
+    };
+    const applyTableFilter = () => {
+      const query = $('#stockSearch').value.trim().toLowerCase();
+      const rows = $$('#stockTable tr');
+      let visible = 0;
+      rows.forEach(row => {
+        const matchesSearch = row.dataset.search.toLowerCase().includes(query);
+        const selectedStrategies = getSelectedStrategies();
+        const matchesStrategy = !strategyFilterActive || selectedStrategies.some(strategy => row.dataset.strategy && row.dataset.strategy.includes(strategy));
+        const matchesScope = activeTableFilter === 'all' || (activeTableFilter === 'favorite' && row.dataset.favorite === 'true') || (activeTableFilter === 'strategy' && matchesStrategy) || (activeTableFilter.startsWith('group:') && row.dataset.group === activeTableFilter.slice(6));
+        row.hidden = !(matchesSearch && matchesScope);
+        if (!row.hidden) visible++;
+      });
+      $('#tableResult').textContent = `显示 ${visible} / ${rows.length} 只股票 · 数据每 5 秒自动刷新`;
+    };
+    $('#stockSearch').addEventListener('input', applyTableFilter);
+    const runStrategyCode = () => {
+      const source = $('#codeFilter').value.trim();
+      if (!source) { $('#codeFilter').focus(); toast('请先编写筛选代码'); return; }
+      $$('.filter-result-row').forEach(row => row.hidden = false);
+      toast('策略代码执行完成，命中 37 只股票');
+    };
+    $('#codeFilter').addEventListener('input', applyTableFilter);
+    $('#clearCodeFilter').addEventListener('click', () => { $('#codeFilter').value = ''; applyTableFilter(); toast('已清空筛选代码'); });
+    $('#runCode').addEventListener('click', runStrategyCode);
+    $('#groupTabs').addEventListener('click', event => {
+      const tab = event.target.closest('.table-tab');
+      if (!tab) return;
+      activeTableFilter = tab.dataset.table;
+      strategyFilterActive = activeTableFilter === 'strategy';
+      $$('.table-tab').forEach(item => item.classList.toggle('active', item === tab));
+      applyTableFilter();
+    });
+    $('#stockTable').addEventListener('change', event => {
+      const select = event.target.closest('.row-group');
+      if (!select) return;
+      const row = select.closest('tr');
+      row.dataset.group = select.value;
+      $('.stock-group', row).textContent = select.value;
+      applyTableFilter();
+      toast(`已将 ${$('.stock-name', row).textContent} 移入「${select.value}」`);
+    });
+    $('#stockTable').addEventListener('click', event => {
+      const star = event.target.closest('.stock-star');
+      const detail = event.target.closest('.row-detail, .stock-name');
+      if (star) {
+        const row = star.closest('tr');
+        const isFavorite = row.dataset.favorite === 'true';
+        row.dataset.favorite = String(!isFavorite);
+        star.classList.toggle('active', !isFavorite);
+        star.title = isFavorite ? '加入自选' : '取消自选';
+        if (isFavorite) backtestStockPool.delete(stockCodeFromRow(row));
+        updateWatchCount();
+        renderBacktestStockPool();
+        applyTableFilter();
+        toast(isFavorite ? '已移出自选股' : `已加入「${row.dataset.group}」分组`);
+        return;
+      }
+      if (detail) openStockDetail(detail.closest('tr'));
+    });
+    const addResultToWatchlist = (resultRow, button) => {
+      const code = resultRow.dataset.code;
+      const group = $('.result-group', resultRow).value;
+      const existing = $$('#stockTable tr').find(row => row.dataset.search.includes(code));
+      if (existing) {
+        existing.dataset.favorite = 'true';
+        existing.dataset.group = group;
+        $('.row-group', existing).value = group;
+        $('.stock-group', existing).textContent = group;
+      } else {
+        const changeClass = resultRow.dataset.change.startsWith('-') ? 'down' : 'up';
+        const signalClass = resultRow.dataset.signal.includes('回踩') ? 'orange' : 'green';
+        const safeGroup = escapeHtml(group);
+        $('#stockTable').insertAdjacentHTML('beforeend', `<tr data-favorite="true" data-group="${safeGroup}" data-strategy="${escapeHtml(resultRow.dataset.signal)}" data-search="${resultRow.dataset.name} ${code}"><td><div class="stock-cell"><button class="stock-star active" title="取消自选"><i data-lucide="star"></i></button><div><div class="stock-name">${resultRow.dataset.name}</div><div class="stock-code">${code} · ${resultRow.dataset.sector}</div><span class="stock-group">${safeGroup}</span></div></div></td><td class="price">${resultRow.dataset.price}</td><td class="${changeClass}">${resultRow.dataset.change}</td><td><span class="tag ${signalClass}">${resultRow.dataset.signal}</span></td><td><span class="up">${Number(resultRow.dataset.strength) >= 85 ? '强' : '中'} · ${resultRow.dataset.strength}</span></td><td>${resultRow.dataset.win}</td><td class="up">${resultRow.dataset.return}</td><td><select class="row-group" aria-label="${resultRow.dataset.name} 分组">${[...groups].map(item => `<option ${item === group ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('')}</select></td><td><button class="icon-btn row-detail" title="查看详情"><i data-lucide="arrow-up-right"></i></button></td></tr>`);
+      }
+      button.classList.add('added');
+      button.innerHTML = '<i data-lucide="check"></i>已加入';
+      button.disabled = true;
+      updateWatchCount();
+      backtestStockPool.add(code);
+      renderBacktestStockPool();
+      applyTableFilter();
+      refreshIcons();
+      toast(`${resultRow.dataset.name} 已加入「${group}」分组`);
+    };
+    $('#filterResults').addEventListener('click', event => { const button = event.target.closest('.add-filter-stock'); if (button) addResultToWatchlist(button.closest('.filter-result-row'), button); });
+    $('#viewAllBtn').addEventListener('click', () => { $('#stockSearch').value = ''; activeTableFilter = 'all'; strategyFilterActive = false; $$('.table-tab').forEach(item => item.classList.toggle('active', item.dataset.table === 'all')); applyTableFilter(); toast('已展示完整股票列表'); });
+
+    const groupModal = $('#groupModalBackdrop');
+    const closeGroupModal = () => groupModal.classList.remove('open');
+    $('#newGroupBtn').addEventListener('click', () => { $('#groupName').value = ''; groupModal.classList.add('open'); setTimeout(() => $('#groupName').focus(), 50); });
+    $('#closeGroupModal').addEventListener('click', closeGroupModal); $('#cancelGroupModal').addEventListener('click', closeGroupModal);
+    groupModal.addEventListener('click', event => { if (event.target === groupModal) closeGroupModal(); });
+    $('#saveGroup').addEventListener('click', () => {
+      const name = $('#groupName').value.trim();
+      if (!name) { $('#groupName').focus(); toast('请先填写分组名称'); return; }
+      if (groups.has(name)) { toast('这个分组已经存在'); return; }
+      groups.add(name);
+      $('#newGroupBtn').insertAdjacentHTML('beforebegin', `<button class="table-tab" data-table="group:${escapeHtml(name)}">${escapeHtml(name)}</button>`);
+      updateGroupOptions();
+      closeGroupModal();
+      toast(`分组「${name}」已创建`);
+    });
+
+    $$('.chart-tab').forEach(tab => tab.addEventListener('click', () => { $$('.chart-tab').forEach(item => item.classList.remove('active')); tab.classList.add('active'); const returns = { '1M': '+4.82%', '3M': '+10.36%', YTD: '+18.62%', ALL: '+32.14%' }; $('#rangeReturn').textContent = returns[tab.dataset.range]; }));
+    $('#autoSwitch').addEventListener('click', () => { const button = $('#autoSwitch'); const running = button.classList.toggle('on'); $('#autoTitle').textContent = running ? '自动交易运行中' : '自动交易已暂停'; $('#autoDesc').textContent = running ? '今日已执行 8 笔 · 下单额度 ¥ 50,000 / 笔' : '策略信号仍会生成 · 等待手动确认下单'; $('.auto-status .tag').textContent = running ? '实盘' : '已暂停'; $('.auto-status .tag').className = running ? 'tag green' : 'tag gray'; toast(running ? '自动交易已恢复' : '自动交易已暂停'); });
+
+    let strategyMode = 'new';
+    let editingStrategyRow = null;
+    const modal = $('#modalBackdrop');
+    const closeModal = () => { modal.classList.remove('open'); editingStrategyRow = null; };
+    const openStrategyModal = (mode = 'new', row = null, code = '') => {
+      strategyMode = mode;
+      editingStrategyRow = row;
+      $('#modalTitle').textContent = mode === 'edit' ? '编辑策略' : '生成代码策略';
+      $('#modalSubtitle').textContent = mode === 'edit' ? '调整策略名称、目标代码与风险偏好' : '将代码与条件组合成可复用策略';
+      $('#strategyName').value = row ? $('.strategy-name', row).textContent.trim() : (code ? `${code} 代码策略` : '');
+      $('#strategyCode').value = code;
+      modal.classList.add('open');
+      setTimeout(() => $('#strategyName').focus(), 50);
+    };
+    const addStrategyEditButton = row => { if (!row.querySelector('.strategy-edit')) row.insertAdjacentHTML('beforeend', '<button type="button" class="icon-btn strategy-edit" title="编辑策略"><i data-lucide="pencil"></i></button>'); };
+    $$('.strategy-row').forEach(row => { row.dataset.strategy = $('.strategy-check', row).dataset.strategy || $('.strategy-name', row).textContent.trim(); addStrategyEditButton(row); });
+    refreshIcons();
+    updateStrategyCount();
+    $('#newStrategyBtn').addEventListener('click', () => openStrategyModal('new'));
+    $('#generateCodeStrategy').addEventListener('click', () => { const code = $('#codeFilter').value.trim(); if (!code) { $('#codeFilter').focus(); toast('请先编写策略代码'); return; } openStrategyModal('new', null, code); });
+    $('#strategyManage').addEventListener('click', () => openStrategyModal('edit', $('.strategy-row')));
+    $('.strategy-list').addEventListener('click', event => { const edit = event.target.closest('.strategy-edit'); if (!edit) return; event.preventDefault(); event.stopPropagation(); openStrategyModal('edit', edit.closest('.strategy-row'), $('.strategy-check', edit.closest('.strategy-row')).dataset.code || ''); });
+    $('.strategy-list').addEventListener('change', event => { if (event.target.closest('.strategy-check')) { updateStrategyCount(); applyTableFilter(); } });
+    $('#applyStrategyFilter').addEventListener('click', () => { const selected = getSelectedStrategies(); if (!selected.length) { toast('请至少启用一个策略'); return; } activeTableFilter = 'strategy'; strategyFilterActive = true; $$('.table-tab').forEach(item => item.classList.toggle('active', item.dataset.table === 'strategy')); setActivePage('watchlist'); applyTableFilter(); toast(`已按 ${selected.length} 个策略筛选股票`); });
+    $('#closeModal').addEventListener('click', closeModal); $('#cancelModal').addEventListener('click', closeModal);
+    modal.addEventListener('click', event => { if (event.target === modal) closeModal(); });
+    $('#saveStrategy').addEventListener('click', () => {
+      const name = $('#strategyName').value.trim();
+      const code = $('#strategyCode').value.trim();
+      if (!name) { $('#strategyName').focus(); toast('请先填写策略名称'); return; }
+      const safeName = escapeHtml(name);
+      if (strategyMode === 'edit' && editingStrategyRow) {
+        const strategyKey = $('.strategy-check', editingStrategyRow).dataset.strategy || $('.strategy-name', editingStrategyRow).textContent.trim();
+        $('.strategy-name', editingStrategyRow).textContent = name;
+        $('.strategy-check', editingStrategyRow).dataset.strategy = strategyKey;
+        if (code) $('.strategy-check', editingStrategyRow).dataset.code = code;
+        editingStrategyRow.dataset.strategy = strategyKey;
+        closeModal();
+        toast(`策略「${name}」已更新`);
+      } else {
+        $('.strategy-list').insertAdjacentHTML('beforeend', `<label class="strategy-row"><input class="strategy-check" data-strategy="${safeName}" type="checkbox" checked><div><div class="strategy-name">${safeName}</div><div class="strategy-meta"><span>${code ? '代码策略已绑定' : '自定义条件'}</span><span>待回测</span></div><div class="progress"><span style="width:0%"></span></div></div><div class="strategy-return">--<small>待回测</small></div><button type="button" class="icon-btn strategy-edit" title="编辑策略"><i data-lucide="pencil"></i></button></label>`);
+        const newStrategy = $('.strategy-row:last-child');
+        if (code) $('.strategy-check', newStrategy).dataset.code = code;
+        updateStrategyCount();
+        refreshIcons();
+        closeModal();
+        toast(`策略「${name}」已创建`);
+      }
+      $('#strategyName').value = ''; $('#strategyCode').value = '';
+    });
+    const detailModal = $('#detailModalBackdrop');
+    const detailPoints = {
+      '300750': [['B', '09:47 · 252.60', '趋势加速反转 · 置信度 88%', '+6.25%', 'buy'], ['S', '11:06 · 263.40', '止盈信号 · 持仓 79 分钟', '+4.27%', 'sell'], ['B', '13:42 · 265.20', '放量突破 · 置信度 92%', '持仓中', 'buy']],
+      '300308': [['B', '09:36 · 139.40', '涨停回踩 · 置信度 86%', '+2.49%', 'buy'], ['S', '11:18 · 143.12', '短线止盈 · 持仓 102 分钟', '+2.67%', 'sell'], ['B', '13:50 · 142.20', '趋势延续 · 置信度 81%', '持仓中', 'buy']],
+      '600519': [['B', '10:02 · 1,475.00', '多周期共振 · 置信度 78%', '+0.47%', 'buy'], ['S', '13:14 · 1,486.00', '压力位减仓', '+0.74%', 'sell']],
+    };
+    const openStockDetail = row => {
+      const code = (row.dataset.search.match(/\d{6}/) || [''])[0];
+      const name = $('.stock-name', row).textContent.trim();
+      const change = $('td:nth-child(3)', row).textContent.trim();
+      const signal = $('.tag', row)?.textContent.trim() || row.dataset.strategy || '观察中';
+      $('#detailStockName').textContent = name;
+      $('#detailStockCode').textContent = `${code} · ${$('.stock-code', row).textContent.split('·').slice(1).join('·').trim()}`;
+      $('#detailPrice').textContent = $('.price', row).textContent.trim();
+      $('#detailChange').textContent = change;
+      $('#detailChange').className = `detail-change ${change.startsWith('-') ? 'down' : 'up'}`;
+      $('#detailSignal').textContent = signal;
+      $('#detailSignal').className = `tag ${signal.includes('回踩') ? 'orange' : signal.includes('共振') ? 'blue' : 'green'}`;
+      $('#detailWin').textContent = $('td:nth-child(6)', row).textContent.trim();
+      $('#detailMeta').textContent = `分时 · 09:42:18 · ${row.dataset.group} · 数据延迟 1.2s`;
+      const points = detailPoints[code] || [['B', '09:58 · 参考价', `${signal} · 置信度 76%`, '持仓中', 'buy'], ['S', '11:21 · 压力位', '分批止盈信号', '--', 'sell']];
+      $('#bsPoints').innerHTML = points.map(point => `<div class="bs-row"><span class="bs-badge ${point[4]}">${point[0]}</span><div class="bs-row-main"><strong>${point[1]}</strong><span>${point[2]}</span></div><span class="bs-row-result ${point[3].startsWith('+') ? 'up' : ''}">${point[3]}</span></div>`).join('');
+      detailModal.classList.add('open');
+      refreshIcons();
+    };
+    const closeDetailModal = () => detailModal.classList.remove('open');
+    $('#closeDetailModal').addEventListener('click', closeDetailModal);
+    detailModal.addEventListener('click', event => { if (event.target === detailModal) closeDetailModal(); });
+    $('#refreshBtn').addEventListener('click', () => { $('#refreshBtn').style.transform = 'rotate(360deg)'; setTimeout(() => $('#refreshBtn').style.transform = '', 450); toast('行情数据已刷新'); });
+    $('#exportBtn').addEventListener('click', () => toast('报告已生成，准备下载')); $('#notifyBtn').addEventListener('click', () => toast('你有 3 条新的策略通知')); $('#signalMore').addEventListener('click', () => { setActivePage('filter'); toast('已打开策略筛选页面'); }); $('#strategyManage').addEventListener('click', () => toast('策略管理面板即将开放')); $('#riskBtn').addEventListener('click', () => toast('风险配置：单笔 50,000 · 总仓位 70%')); $('#addStockBtn').addEventListener('click', () => { $('#stockSearch').focus(); toast('输入股票名称或代码开始添加'); });
+    const profileButton = $('#profileButton');
+    const profileMenu = $('#profileMenu');
+    const closeProfileMenu = () => { profileMenu.classList.remove('open'); profileButton.setAttribute('aria-expanded', 'false'); };
+    profileButton.addEventListener('click', event => {
+      event.stopPropagation();
+      const open = profileMenu.classList.toggle('open');
+      profileButton.setAttribute('aria-expanded', String(open));
+    });
+    document.addEventListener('click', event => { if (!event.target.closest('#profileMenu, #profileButton')) closeProfileMenu(); });
+    $('#accountSettings').addEventListener('click', () => { closeProfileMenu(); toast('账号设置面板即将开放'); });
+    $('#forgotPassword').addEventListener('click', () => toast('演示环境暂不支持找回密码'));
+    const authScreen = $('#authScreen');
+    $('#logoutButton').addEventListener('click', () => {
+      closeProfileMenu();
+      authScreen.classList.add('open');
+      authScreen.setAttribute('aria-hidden', 'false');
+      $('#loginPassword').value = '';
+      setTimeout(() => $('#loginAccount').focus(), 80);
+      toast('已退出登录');
+    });
+    $('#loginForm').addEventListener('submit', event => {
+      event.preventDefault();
+      const account = $('#loginAccount').value.trim();
+      const password = $('#loginPassword').value.trim();
+      if (!account) { $('#loginAccount').focus(); toast('请输入账号'); return; }
+      if (!password) { $('#loginPassword').focus(); toast('请输入密码'); return; }
+      authScreen.classList.remove('open');
+      authScreen.setAttribute('aria-hidden', 'true');
+      toast('登录成功，欢迎回来');
+    });
+  </script>
+  <script src="/static/js/quantpilot-api.js"></script>
+</body>
+</html>

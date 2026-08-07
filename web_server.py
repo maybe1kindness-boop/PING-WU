@@ -228,7 +228,144 @@ update_status = {
 @app.route('/')
 def index():
     """主页"""
-    return render_template('index.html')
+    return render_template('quant-prototype.html')
+
+
+QUANTPILOT_WATCHLIST_FILE = Path('runtime/data/quantpilot_watchlist.json')
+QUANTPILOT_GROUPS_FILE = Path('runtime/data/quantpilot_groups.json')
+
+
+def _read_quantpilot_watchlist():
+    """读取 QuantPilot 自选股；文件不存在时返回空列表。"""
+    try:
+        if not QUANTPILOT_WATCHLIST_FILE.exists():
+            return []
+        with QUANTPILOT_WATCHLIST_FILE.open('r', encoding='utf-8') as file:
+            payload = json.load(file)
+        return payload if isinstance(payload, list) else []
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning(f'读取 QuantPilot 自选股失败: {exc}')
+        return []
+
+
+def _write_quantpilot_watchlist(items):
+    QUANTPILOT_WATCHLIST_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp_file = QUANTPILOT_WATCHLIST_FILE.with_suffix('.tmp')
+    with temp_file.open('w', encoding='utf-8') as file:
+        json.dump(items, file, ensure_ascii=False, indent=2)
+    temp_file.replace(QUANTPILOT_WATCHLIST_FILE)
+
+
+def _read_quantpilot_groups():
+    try:
+        if not QUANTPILOT_GROUPS_FILE.exists():
+            return []
+        with QUANTPILOT_GROUPS_FILE.open('r', encoding='utf-8') as file:
+            groups = json.load(file)
+        return groups if isinstance(groups, list) else []
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning(f'读取 QuantPilot 分组失败: {exc}')
+        return []
+
+
+def _write_quantpilot_groups(groups):
+    QUANTPILOT_GROUPS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp_file = QUANTPILOT_GROUPS_FILE.with_suffix('.tmp')
+    with temp_file.open('w', encoding='utf-8') as file:
+        json.dump(sorted(set(groups)), file, ensure_ascii=False, indent=2)
+    temp_file.replace(QUANTPILOT_GROUPS_FILE)
+
+
+@app.route('/api/quantpilot/watchlist', methods=['GET'])
+def get_quantpilot_watchlist():
+    """获取 QuantPilot 自选股，并补充基础资料和最新收盘价。"""
+    try:
+        items = _read_quantpilot_watchlist()
+        result = []
+        for item in items:
+            raw_code = str(item.get('code', '')).strip()
+            code = raw_code.zfill(6)
+            if not raw_code or not code.isdigit() or len(code) != 6:
+                continue
+            basic = db_manager.query_one(
+                'SELECT name, industry FROM stock_basic WHERE code = ?', (code,)
+            ) or {}
+            quote = db_manager.query_one(
+                'SELECT close, date FROM stock_kline WHERE code = ? ORDER BY date DESC LIMIT 2',
+                (code,)
+            )
+            previous = db_manager.query_one(
+                'SELECT close FROM stock_kline WHERE code = ? ORDER BY date DESC LIMIT 1 OFFSET 1',
+                (code,)
+            )
+            price = quote.get('close') if quote else item.get('price', 0)
+            previous_close = previous.get('close') if previous else None
+            change = item.get('change', 0)
+            if previous_close and price is not None:
+                change = (float(price) - float(previous_close)) / float(previous_close) * 100
+            result.append({
+                **item,
+                'code': code,
+                'name': basic.get('name') or item.get('name') or code,
+                'industry': basic.get('industry') or item.get('industry') or '未分类',
+                'price': float(price or 0),
+                'change': float(change or 0),
+                'quote_date': quote.get('date') if quote else item.get('quote_date'),
+            })
+        groups = sorted(set(_read_quantpilot_groups()) | {
+            item.get('group', '待观察') for item in result if item.get('group')
+        })
+        return jsonify({'success': True, 'data': {'items': result, 'groups': groups}})
+    except Exception as exc:
+        logger.exception('获取 QuantPilot 自选股失败')
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/quantpilot/watchlist', methods=['POST'])
+def save_quantpilot_watchlist_item():
+    """新增或更新 QuantPilot 自选股。"""
+    try:
+        payload = request.get_json() or {}
+        raw_code = str(payload.get('code', '')).strip()
+        code = raw_code.zfill(6)
+        if not raw_code or not code.isdigit() or len(code) != 6:
+            return jsonify({'success': False, 'error': '股票代码必须是 6 位数字'}), 400
+        items = _read_quantpilot_watchlist()
+        item = next((entry for entry in items if entry.get('code') == code), None)
+        if item is None:
+            item = {'code': code}
+            items.append(item)
+        item.update({
+            key: payload[key]
+            for key in ('name', 'industry', 'group', 'strategy', 'signal_strength', 'win_rate', 'expected_return')
+            if key in payload
+        })
+        item['group'] = item.get('group') or '待观察'
+        _write_quantpilot_watchlist(items)
+        return jsonify({'success': True, 'data': item})
+    except Exception as exc:
+        logger.exception('保存 QuantPilot 自选股失败')
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/quantpilot/watchlist/<code>', methods=['DELETE'])
+def delete_quantpilot_watchlist_item(code):
+    """删除 QuantPilot 自选股。"""
+    code = str(code).strip().zfill(6)
+    items = [item for item in _read_quantpilot_watchlist() if item.get('code') != code]
+    _write_quantpilot_watchlist(items)
+    return jsonify({'success': True, 'data': {'code': code}})
+
+
+@app.route('/api/quantpilot/groups', methods=['POST'])
+def create_quantpilot_group():
+    """创建 QuantPilot 自选分组。分组由自选股条目的 group 字段自然维护。"""
+    payload = request.get_json() or {}
+    name = str(payload.get('name', '')).strip()
+    if not name:
+        return jsonify({'success': False, 'error': '分组名称不能为空'}), 400
+    _write_quantpilot_groups(_read_quantpilot_groups() + [name])
+    return jsonify({'success': True, 'data': {'name': name}})
 
 
 @app.route('/api/stocks')
