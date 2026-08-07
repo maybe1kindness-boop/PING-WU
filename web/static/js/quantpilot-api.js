@@ -26,7 +26,10 @@
     watchlist: [],
     groups: new Set(['核心关注', '短线策略', '待观察']),
     strategies: [],
-    selectedStrategies: []
+    selectedStrategies: [],
+    codeStrategies: [],
+    codeStrategyResults: {},
+    activeCodeStrategy: null
   };
 
   const replaceHandler = id => {
@@ -96,6 +99,51 @@
     if (cards[3]) $('.stat-footer', cards[3]).innerHTML = `<span>运行模式</span><span class="tag ${portfolio?.run_mode === 'auto' ? 'green' : 'orange'}">${portfolio?.run_mode === 'auto' ? '实盘' : '手动确认'}</span>`;
   }
 
+  function updateResultSelection(root = $('#filterResults')) {
+    if (!root) return;
+    const selected = $$('.result-select:checked', root).length;
+    setText('selectedResultCount', `已选 ${selected} 条`);
+    const batchButton = $('#batchAddStock');
+    if (batchButton) batchButton.disabled = selected === 0;
+  }
+
+  function bindResultSelection(root) {
+    if (!root || root.dataset.quantPilotSelectionBound) return;
+    root.dataset.quantPilotSelectionBound = 'true';
+    root.addEventListener('change', event => {
+      if (event.target.closest('.result-select')) updateResultSelection(root);
+    });
+    root.addEventListener('click', event => {
+      const selectAll = event.target.closest('#selectAllResults');
+      if (selectAll) {
+        const rows = $$('.filter-result-row', root).filter(row => !row.hidden);
+        const shouldSelect = rows.some(row => !$('.result-select', row)?.checked);
+        rows.forEach(row => {
+          const checkbox = $('.result-select', row);
+          if (checkbox) checkbox.checked = shouldSelect;
+        });
+        updateResultSelection(root);
+        return;
+      }
+      const batchAdd = event.target.closest('#batchAddStock');
+      if (batchAdd && !batchAdd.disabled) {
+        const group = $('#batchGroup')?.value || '待观察';
+        $$('.filter-result-row', root)
+          .filter(row => $('.result-select', row)?.checked)
+          .forEach(row => {
+            const groupSelect = $('.result-group', row);
+            const addButton = $('.add-filter-stock', row);
+            if (groupSelect) groupSelect.value = group;
+            if (addButton && !addButton.disabled) addButton.click();
+            const checkbox = $('.result-select', row);
+            if (checkbox) checkbox.checked = false;
+          });
+        updateResultSelection(root);
+      }
+    });
+    updateResultSelection(root);
+  }
+
   function groupOptions(selected) {
     return [...state.groups].map(group => `<option value="${escapeHtml(group)}" ${group === selected ? 'selected' : ''}>${escapeHtml(group)}</option>`).join('');
   }
@@ -122,6 +170,80 @@
     (data.groups || []).forEach(group => state.groups.add(group));
     renderWatchlist();
     renderBacktestPool();
+  }
+
+  function getCodeStrategyStocks(strategy) {
+    return Array.isArray(state.codeStrategyResults[strategy.name])
+      ? state.codeStrategyResults[strategy.name]
+      : [];
+  }
+
+  function renderCodeStrategyPools(activeName = state.activeCodeStrategy?.name) {
+    const mount = $('#codeStrategyPoolMount');
+    if (!mount) return;
+    const strategies = state.codeStrategies;
+    if (!strategies.length) {
+      mount.innerHTML = '<div class="strategy-pool-zone"><div class="strategy-pool-heading"><div><div class="panel-title"><i data-lucide="layers-3"></i>代码策略与股票池</div><div class="panel-subtitle">保存多个策略后，可点击策略查看各自命中的股票</div></div><span class="tag blue">暂无已保存策略</span></div><div class="stock-pool-empty">暂无代码策略，请点击“新建策略”保存第一条策略。</div></div>';
+      refreshIcons();
+      return;
+    }
+
+    const selected = strategies.find(item => item.name === activeName) || strategies[0];
+    state.activeCodeStrategy = selected;
+    const stocks = getCodeStrategyStocks(selected);
+    const strategyItems = strategies.map(strategy => {
+      const count = getCodeStrategyStocks(strategy).length;
+      const active = strategy.name === selected.name ? ' active' : '';
+      return `<button type="button" class="strategy-pool-item${active}" data-strategy-name="${escapeHtml(strategy.name)}"><span class="strategy-pool-icon"><i data-lucide="layers-3"></i></span><span><span class="strategy-pool-name">${escapeHtml(strategy.name)}</span><span class="strategy-pool-meta">代码策略 · ${escapeHtml(strategy.updated_at || '已保存')}</span></span><span class="strategy-pool-count">${count}<small>只股票</small></span></button>`;
+    }).join('');
+    const stockRows = stocks.map(stock => {
+      const change = Number(stock.change || 0);
+      const signal = Array.isArray(stock.signals) ? stock.signals[0] : (stock.signals || {});
+      const price = stock.price ?? stock.close ?? signal.close ?? 0;
+      return `<tr><td><div class="stock-name">${escapeHtml(stock.name || stock.code)}</div><div class="stock-code">${escapeHtml(stock.code)} · ${escapeHtml(stock.industry || '未分类')}</div></td><td>${Number(price || 0).toFixed(2)}</td><td class="${change < 0 ? 'down' : 'up'}">${formatPercent(change)}</td><td><span class="tag green">${escapeHtml(selected.name)}</span></td></tr>`;
+    }).join('');
+    mount.innerHTML = `<div class="strategy-pool-zone"><div class="strategy-pool-heading"><div><div class="panel-title"><i data-lucide="layers-3"></i>代码策略与股票池</div><div class="panel-subtitle">点击左侧策略，只显示该策略对应的股票</div></div><span class="tag blue">共 ${strategies.length} 个策略</span></div><div class="strategy-pool-layout"><div class="strategy-pool-list">${strategyItems}</div><div class="stock-pool-preview"><div class="stock-pool-header"><strong>${escapeHtml(selected.name)} · 股票池</strong><span>${stocks.length} 只 · ${stocks.length ? '最近一次执行结果' : '尚未执行该策略'}</span></div><table class="stock-pool-table"><thead><tr><th>股票</th><th>最新价</th><th>涨跌幅</th><th>所属策略</th></tr></thead><tbody>${stockRows || '<tr><td colspan="4" class="stock-pool-empty">该策略暂无执行结果</td></tr>'}</tbody></table></div></div></div>`;
+    refreshIcons();
+  }
+
+  function loadCodeStrategyIntoEditor(strategy) {
+    const editor = $('#codeFilter');
+    if (editor) editor.value = strategy.source || '';
+    state.activeCodeStrategy = strategy;
+    renderCodeStrategyPools(strategy.name);
+  }
+
+  async function loadCodeStrategies() {
+    const data = await api('/api/quantpilot/code-strategies');
+    const hadActiveStrategy = Boolean(state.activeCodeStrategy);
+    state.codeStrategies = Array.isArray(data?.strategies) ? data.strategies : [];
+    renderCodeStrategyPools();
+    if (!hadActiveStrategy && state.codeStrategies.length) {
+      loadCodeStrategyIntoEditor(state.codeStrategies[0]);
+    }
+  }
+
+  async function saveCodeStrategy() {
+    const name = $('#strategyName')?.value.trim();
+    const source = $('#strategyCode')?.value.trim() || $('#codeFilter')?.value.trim();
+    if (!name) return toast('请先填写策略名称');
+    if (!source) return toast('请先填写策略代码');
+    try {
+      const record = await api('/api/quantpilot/code-strategies', {
+        method: 'POST',
+        body: JSON.stringify({ name, source })
+      });
+      state.codeStrategies = [
+        ...state.codeStrategies.filter(item => item.name !== record.name),
+        record,
+      ];
+      state.activeCodeStrategy = record;
+      loadCodeStrategyIntoEditor(record);
+      $('#modalBackdrop')?.classList.remove('open');
+      toast(`策略「${name}」已保存`);
+    } catch (error) {
+      toast(`策略保存失败：${error.message}`);
+    }
   }
 
   async function saveWatch(item) {
@@ -160,6 +282,7 @@
       const reason = escapeHtml(item.reason || '命中筛选条件');
       return `<div class="filter-result-row" data-name="${escapeHtml(item.name)}" data-code="${escapeHtml(item.code)}" data-sector="${escapeHtml(item.industry)}" data-search="${escapeHtml(`${item.name} ${item.code} ${item.industry}`)}" data-price="${Number(item.price || 0).toFixed(2)}" data-change="${Number(item.change || 0).toFixed(2)}" data-signal="${escapeHtml(item.strategy || '代码筛选')}" data-strength="${Number(item.strength || 0)}" data-win="${item.win == null ? '' : Number(item.win).toFixed(1)}" data-return="${item.expected == null ? '' : Number(item.expected).toFixed(2)}"><input class="result-select" type="checkbox" aria-label="选择${escapeHtml(item.name)}"><div class="result-stock"><div><div class="stock-name">${escapeHtml(item.name)}</div><div class="stock-code">${escapeHtml(item.code)} · ${escapeHtml(item.industry)}</div></div></div><div class="result-signal"><div class="result-metrics"><span class="result-metric">价格 <strong>${Number(item.price || 0).toFixed(2)}</strong></span><span class="result-metric">信号强度 <strong>${Number(item.strength || 0).toFixed(0)}</strong></span>${item.win == null ? '' : `<span class="result-metric">历史胜率 <strong>${Number(item.win).toFixed(1)}%</strong></span>`}</div><div class="result-reason" title="${reason}">${reason}</div></div><div class="result-actions"><select class="group-select result-group" aria-label="${escapeHtml(item.name)}分组">${groupOptions('待观察')}</select><button class="ghost-btn add-filter-stock"><i data-lucide="star"></i>加入自选</button></div></div>`;
     }).join('') : '<div class="stock-pool-empty">没有符合条件的股票</div>';
+    updateResultSelection(container);
     refreshIcons();
   }
 
@@ -226,13 +349,16 @@
     button.innerHTML = '<i data-lucide="loader-circle"></i>执行中';
     refreshIcons();
     try {
+      const strategyName = state.activeCodeStrategy?.name || '未保存代码策略';
       const result = await api('/api/quantpilot/code-screen', {
         method: 'POST',
-        body: JSON.stringify({ source })
+        body: JSON.stringify({ source, strategy_name: strategyName })
       });
-      renderScanResults({ '代码筛选': result.results || [] });
+      state.codeStrategyResults[strategyName] = result.results || [];
+      renderCodeStrategyPools(strategyName);
+      renderScanResults({ [strategyName]: result.results || [] });
       const incomplete = result.errors?.length ? `；${result.errors.length} 只因历史数据不足未纳入` : '';
-      toast(`后端筛选完成，全部条件已执行，命中 ${result.count || 0} 只股票${incomplete}`);
+      toast(`策略「${strategyName}」筛选完成，命中 ${result.count || 0} 只股票${incomplete}`);
     } catch (error) {
       toast(`代码筛选失败：${error.message}`);
     }
@@ -277,6 +403,7 @@
       const statusText = $('.system-status div:last-child');
       if (statusText) statusText.textContent = `行情更新于 ${stats?.latest_date || '--'} · 策略 ${stats?.strategies || state.strategies.length} 个`;
       await loadWatchlist();
+      await loadCodeStrategies();
     } catch (error) {
       toast(`数据加载失败：${error.message}`);
     }
@@ -289,12 +416,15 @@
     scan?.addEventListener('click', runScan);
     const runCode = replaceHandler('runCode');
     runCode?.addEventListener('click', runCodeScreen);
+    const saveStrategy = replaceHandler('saveStrategy');
+    saveStrategy?.addEventListener('click', saveCodeStrategy);
     const backtest = replaceHandler('runBacktest');
     backtest?.addEventListener('click', runBacktest);
     const addStock = replaceHandler('addStockBtn');
     addStock?.addEventListener('click', () => { $('#stockSearch')?.focus(); toast('请从筛选结果中加入自选股'); });
     replaceHandler('stockTable');
     const filterResults = replaceHandler('filterResults');
+    bindResultSelection(filterResults);
     filterResults?.addEventListener('click', async event => {
       const button = event.target.closest('.add-filter-stock');
       if (!button) return;
@@ -316,6 +446,13 @@
         refreshIcons();
         toast(`${row.dataset.name} 已加入自选股`);
       } catch (error) { toast(`加入失败：${error.message}`); }
+    });
+    const strategyPool = $('#codeStrategyPoolMount');
+    strategyPool?.addEventListener('click', event => {
+      const item = event.target.closest('.strategy-pool-item[data-strategy-name]');
+      if (!item) return;
+      const strategy = state.codeStrategies.find(entry => entry.name === item.dataset.strategyName);
+      if (strategy) loadCodeStrategyIntoEditor(strategy);
     });
     $$('.strategy-check').forEach(node => node.addEventListener('change', () => {
       state.selectedStrategies = $$('.strategy-check:checked').map(item => item.dataset.strategy);
