@@ -29,7 +29,8 @@
     selectedStrategies: [],
     codeStrategies: [],
     codeStrategyResults: {},
-    activeCodeStrategy: null
+    activeCodeStrategy: null,
+    lastCodeScreen: null
   };
 
   const replaceHandler = id => {
@@ -211,12 +212,18 @@
     if (editor) editor.value = strategy.source || '';
     state.activeCodeStrategy = strategy;
     renderCodeStrategyPools(strategy.name);
+    renderScanResults({ [strategy.name]: getCodeStrategyStocks(strategy) });
   }
 
   async function loadCodeStrategies() {
     const data = await api('/api/quantpilot/code-strategies');
     const hadActiveStrategy = Boolean(state.activeCodeStrategy);
     state.codeStrategies = Array.isArray(data?.strategies) ? data.strategies : [];
+    state.codeStrategies.forEach(strategy => {
+      if (Array.isArray(strategy.results)) {
+        state.codeStrategyResults[strategy.name] = strategy.results;
+      }
+    });
     renderCodeStrategyPools();
     if (!hadActiveStrategy && state.codeStrategies.length) {
       loadCodeStrategyIntoEditor(state.codeStrategies[0]);
@@ -228,16 +235,20 @@
     const source = $('#strategyCode')?.value.trim() || $('#codeFilter')?.value.trim();
     if (!name) return toast('请先填写策略名称');
     if (!source) return toast('请先填写策略代码');
+    const savedResults = state.lastCodeScreen?.source === source
+      ? state.lastCodeScreen.results
+      : getCodeStrategyStocks(state.activeCodeStrategy || { name: '' });
     try {
       const record = await api('/api/quantpilot/code-strategies', {
         method: 'POST',
-        body: JSON.stringify({ name, source })
+        body: JSON.stringify({ name, source, results: savedResults })
       });
       state.codeStrategies = [
         ...state.codeStrategies.filter(item => item.name !== record.name),
         record,
       ];
       state.activeCodeStrategy = record;
+      state.codeStrategyResults[name] = record.results || savedResults || [];
       loadCodeStrategyIntoEditor(record);
       $('#modalBackdrop')?.classList.remove('open');
       toast(`策略「${name}」已保存`);
@@ -308,8 +319,14 @@
     });
     table.addEventListener('click', async event => {
       const star = event.target.closest('.stock-star');
-      if (!star) return;
-      try { await bindFavorite(star.closest('tr')); } catch (error) { toast(error.message); }
+      if (star) {
+        try { await bindFavorite(star.closest('tr')); } catch (error) { toast(error.message); }
+        return;
+      }
+      const detail = event.target.closest('.row-detail, .stock-name');
+      if (detail && typeof window.quantPilotOpenStockDetail === 'function') {
+        window.quantPilotOpenStockDetail(detail.closest('tr'));
+      }
     });
   }
 
@@ -355,6 +372,11 @@
         body: JSON.stringify({ source, strategy_name: strategyName })
       });
       state.codeStrategyResults[strategyName] = result.results || [];
+      state.lastCodeScreen = {
+        source,
+        results: result.results || [],
+        strategyName,
+      };
       renderCodeStrategyPools(strategyName);
       renderScanResults({ [strategyName]: result.results || [] });
       const incomplete = result.errors?.length ? `；${result.errors.length} 只因历史数据不足未纳入` : '';
@@ -454,10 +476,14 @@
       const strategy = state.codeStrategies.find(entry => entry.name === item.dataset.strategyName);
       if (strategy) loadCodeStrategyIntoEditor(strategy);
     });
-    $$('.strategy-check').forEach(node => node.addEventListener('change', () => {
+    const strategyList = $('.strategy-list');
+    if (strategyList && !strategyList.dataset.quantPilotBound) {
+      strategyList.dataset.quantPilotBound = 'true';
+      strategyList.addEventListener('change', () => {
       state.selectedStrategies = $$('.strategy-check:checked').map(item => item.dataset.strategy);
       setText('selectedStrategyCount', state.selectedStrategies.length);
-    }));
+      });
+    }
     const groupButton = replaceHandler('saveGroup');
     groupButton?.addEventListener('click', async () => {
       const name = $('#groupName')?.value.trim();
@@ -467,13 +493,6 @@
       $('#groupModalBackdrop')?.classList.remove('open');
       renderWatchlist();
       toast(`分组「${name}」已创建`);
-    });
-    const autoSwitch = replaceHandler('autoSwitch');
-    autoSwitch?.addEventListener('click', async () => {
-      try {
-        const status = await api('/api/strategy/status');
-        toast(`当前策略运行状态：${status?.status || status?.run_mode || '已连接'}`);
-      } catch (error) { toast(`获取自动交易状态失败：${error.message}`); }
     });
   }
 

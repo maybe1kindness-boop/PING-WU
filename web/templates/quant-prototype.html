@@ -195,8 +195,8 @@
     .code-strategy-body { padding: 19px; }
     .code-strategy-panel .code-filter { display: block; padding: 0; }
     .code-strategy-panel .code-filter-label { display: block; padding: 0; margin-bottom: 8px; color: var(--ink); font-size: 13px; font-weight: 700; }
-    .code-strategy-panel .code-editor-shell { min-height: 300px; }
-    .code-strategy-panel .code-editor { min-height: 260px; padding: 16px 17px; font-size: 13px; line-height: 1.75; }
+    .code-strategy-panel .code-editor-shell { min-height: 0; }
+    .code-strategy-panel .code-editor { height: 82px; min-height: 82px; resize: none; padding: 10px 12px; font-size: 13px; line-height: 1.6; }
     .code-strategy-panel .code-editor-footer { min-height: 42px; padding: 6px 10px; }
     .code-strategy-panel .code-editor-actions .ghost-btn { min-height: 31px; padding: 0 11px; font-size: 11px; }
     .code-strategy-panel .code-templates, .code-strategy-panel .code-menu-status { display: none; }
@@ -943,7 +943,7 @@
     renderCodeStrategyPool('trend');
     codeStrategyPoolMount.addEventListener('click', event => {
       const item = event.target.closest('.strategy-pool-item');
-      if (item) renderCodeStrategyPool(item.dataset.poolKey);
+      if (item && item.dataset.poolKey) renderCodeStrategyPool(item.dataset.poolKey);
     });
 
     const titles = { overview: '市场总览', filter: '策略筛选', 'history-backtest': '历史回测', 'code-strategy': '代码筛选', settings: '买入/卖出条件设置', watchlist: '我的自选', automation: '自动交易' };
@@ -1340,6 +1340,7 @@
       refreshIcons();
     };
     const closeDetailModal = () => detailModal.classList.remove('open');
+    window.quantPilotOpenStockDetail = openStockDetail;
     $('#closeDetailModal').addEventListener('click', closeDetailModal);
     detailModal.addEventListener('click', event => { if (event.target === detailModal) closeDetailModal(); });
     $('#refreshBtn').addEventListener('click', () => { $('#refreshBtn').style.transform = 'rotate(360deg)'; setTimeout(() => $('#refreshBtn').style.transform = '', 450); toast('行情数据已刷新'); });
