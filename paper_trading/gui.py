@@ -829,8 +829,9 @@ class QuantPilotDesktopWindow(QMainWindow):
 
     BACKEND_URL = "http://127.0.0.1:5001/"
 
-    def __init__(self):
+    def __init__(self, engine):
         super().__init__()
+        self.engine = engine
         self.setWindowTitle("QuantPilot · 量化交易工作台")
         self.resize(1440, 920)
         self.setMinimumSize(1100, 720)
@@ -878,6 +879,6 @@ class QuantPilotDesktopWindow(QMainWindow):
 def run_gui(engine):
     """启动 QuantPilot 原型桌面应用（由 main.py 的 paper 命令调用）。"""
     app = QApplication.instance() or QApplication([])
-    win = QuantPilotDesktopWindow()
+    win = QuantPilotDesktopWindow(engine)
     win.show()
     return app.exec()
