@@ -134,7 +134,7 @@
     Object.entries(data || {}).forEach(([strategy, stocks]) => {
       if (!Array.isArray(stocks)) return;
       stocks.forEach(stock => {
-        const signal = Array.isArray(stock.signals) ? stock.signals[0] : (stock.signals || {});
+      const signal = (Array.isArray(stock.signals) ? stock.signals[0] : stock.signals) || {};
         results.push({
           code: stock.code,
           name: stock.name || stock.code,
