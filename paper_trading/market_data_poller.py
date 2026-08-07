@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from threading import Event, Lock, Thread
 from typing import Dict, List, Optional
 
 import pandas as pd
+import requests
 
 from .broker import Quote
 
@@ -28,11 +31,83 @@ class MarketDataPoller:
         self._cache_ts: float = 0.0
         self._fail_count = 0
         self._degraded = False
+        self._refresh_lock = Lock()
+        self._refresh_done = Event()
+        self._refresh_done.set()
+        self._refreshing = False
+        self._background_stop = Event()
+        self._background_thread: Optional[Thread] = None
+
+    def prefetch_async(self, fast: bool = True) -> None:
+        """Warm a quote snapshot without blocking the desktop UI."""
+        self._refresh_async(fast=fast)
+
+    def start_background_refresh(self, interval_sec: float = 20.0, fast: bool = True) -> None:
+        """Keep the local quote snapshot warm for instant local screening."""
+        with self._refresh_lock:
+            if self._background_thread and self._background_thread.is_alive():
+                return
+
+        self._background_stop.clear()
+
+        def run() -> None:
+            while not self._background_stop.is_set():
+                age = time.time() - self._cache_ts if self._cache_ts else None
+                if not self._cache or age is None or age >= interval_sec:
+                    self._refresh_async(fast=fast)
+                self._background_stop.wait(1.0)
+
+        thread = Thread(target=run, name="screen-quote-refresh-loop", daemon=True)
+        with self._refresh_lock:
+            self._background_thread = thread
+        thread.start()
+
+    def _refresh_async(self, fast: bool = True) -> None:
+        with self._refresh_lock:
+            if self._refreshing:
+                return
+            self._refreshing = True
+            self._refresh_done.clear()
+
+        def run() -> None:
+            try:
+                self._fetch_uncached(fast=fast)
+            finally:
+                with self._refresh_lock:
+                    self._refreshing = False
+                    self._refresh_done.set()
+
+        Thread(target=run, name="screen-quote-refresh", daemon=True).start()
 
     # ---------------- 全市场行情 ----------------
-    def fetch_all(self, force: bool = False) -> Dict[str, Quote]:
+    def fetch_all(
+        self,
+        force: bool = False,
+        max_age: Optional[float] = None,
+        fast: bool = False,
+    ) -> Dict[str, Quote]:
         age = time.time() - self._cache_ts
-        if not force and self._cache and age < self.cfg.spot_min_interval_sec:
+        cache_ttl = self.cfg.spot_min_interval_sec if max_age is None else max_age
+        if not force and self._cache and age < cache_ttl:
+            return self._cache
+        if not force and self._cache:
+            # Stale-while-revalidate: local screening stays instant while the
+            # background thread replaces this snapshot.
+            self._refresh_async(fast=fast)
+            return self._cache
+        if self._refreshing:
+            self._refresh_done.wait(timeout=30)
+            if self._cache:
+                return self._cache
+        self._refresh_async(fast=fast)
+        self._refresh_done.wait(timeout=30)
+        return self._cache
+
+    def _fetch_uncached(self, fast: bool = False) -> Dict[str, Quote]:
+        if fast:
+            self._cache = self._fetch_batch_fallback()
+            self._cache_ts = time.time()
+            self._degraded = True
             return self._cache
         try:
             import akshare as ak
@@ -85,6 +160,8 @@ class MarketDataPoller:
                     open=num("今开", "open"), high=num("最高", "high"),
                     low=num("最低", "low"), prev_close=num("昨收", "prev_close"),
                     volume=num("成交量", "volume"), pct=num("涨跌幅", "pct"),
+                    amount=num("成交额", "amount"),
+                    market_cap=num("总市值", "market_cap"),
                     is_st=name.startswith(("ST", "*ST")),
                 )
             except Exception:
@@ -92,15 +169,97 @@ class MarketDataPoller:
         return out
 
     def _fetch_batch_fallback(self) -> Dict[str, Quote]:
+        """Use Tencent's batch quote endpoint when Eastmoney is unavailable.
+
+        The old fallback only asked for ``self._cache.keys()``. On the first
+        failed refresh that cache is empty, so it silently returned no quotes
+        and every amount/market-cap rule evaluated to false.
+        """
         try:
-            from utils.akshare_fetcher import AKShareFetcher
-            fetcher = AKShareFetcher(self.cfg.db_path.rsplit("/", 1)[0] or "data")
-            prices = fetcher.get_stock_prices_batch(list(self._cache.keys())[:200]
-                                                    if self._cache else [])
-            return {c: Quote(code=c, price=p) for c, p in prices.items() if p}
-        except Exception as e:
-            logger.error(f"batch 降级也失败: {e}")
+            codes = list(self.engine.db_manager.list_all_stocks())
+        except Exception:
+            codes = []
+        if not codes:
+            codes = list(self._cache.keys())
+        if not codes:
             return {}
+        return self._fetch_tencent_quotes(codes)
+
+    def _fetch_tencent_quotes(self, codes: List[str]) -> Dict[str, Quote]:
+        """Fetch full-market quotes from Tencent as a data-source fallback."""
+        batch_size = 200
+        headers = {"User-Agent": "Mozilla/5.0"}
+
+        def number(parts, index):
+            try:
+                value = parts[index] if index < len(parts) else ""
+                return float(value.replace(",", "")) if value else 0.0
+            except (AttributeError, TypeError, ValueError):
+                return 0.0
+
+        def fetch_batch(batch_number: int, batch: List[str]) -> Dict[str, Quote]:
+            quotes: Dict[str, Quote] = {}
+            batch = [str(code).zfill(6) for code in batch]
+            query = ",".join(
+                ("sh" if code.startswith(("6", "8", "9")) else "sz") + code
+                for code in batch
+            )
+            try:
+                response = requests.get(
+                    f"https://qt.gtimg.cn/q={query}",
+                    timeout=8,
+                    headers=headers,
+                )
+                response.encoding = "gbk"
+                if response.status_code != 200:
+                    return quotes
+                for line in response.text.split(";"):
+                    if "=" not in line or "~" not in line:
+                        continue
+                    key, raw = line.split("=", 1)
+                    code = key.split("v_", 1)[-1][2:]
+                    parts = raw.strip().strip('"').split("~")
+                    if len(parts) < 46 or not code:
+                        continue
+                    price = number(parts, 3)
+                    if price <= 0:
+                        continue
+                    # Tencent reports amount in 万元 and market cap in 亿元.
+                    quotes[code] = Quote(
+                        code=code,
+                        name=parts[1] if len(parts) > 1 else "",
+                        price=price,
+                        open=number(parts, 5),
+                        high=number(parts, 33),
+                        low=number(parts, 34),
+                        prev_close=number(parts, 4),
+                        volume=number(parts, 6),
+                        pct=number(parts, 32),
+                        amount=number(parts, 37) * 1e4,
+                        market_cap=number(parts, 44) * 1e8,
+                        is_st=(parts[1].startswith(("ST", "*ST")) if len(parts) > 1 else False),
+                    )
+            except requests.RequestException as exc:
+                logger.debug("腾讯行情降级批次失败(%s): %s", batch_number, exc)
+            except Exception as exc:
+                logger.debug("腾讯行情降级解析失败(%s): %s", batch_number, exc)
+            return quotes
+
+        batches = [
+            codes[start:start + batch_size]
+            for start in range(0, len(codes), batch_size)
+        ]
+        quotes: Dict[str, Quote] = {}
+        worker_count = min(16, max(1, len(batches)))
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            futures = {
+                pool.submit(fetch_batch, index, batch): index
+                for index, batch in enumerate(batches, start=1)
+            }
+            for future in as_completed(futures):
+                quotes.update(future.result())
+        logger.info("腾讯行情降级完成: 成功 %s/%s 只", len(quotes), len(codes))
+        return quotes
 
     # ---------------- 切片 ----------------
     def fetch_quotes(self, codes: List[str]) -> Dict[str, Quote]:
@@ -114,6 +273,7 @@ class MarketDataPoller:
             "age_sec": round(time.time() - self._cache_ts, 1) if self._cache_ts else None,
             "fail_count": self._fail_count,
             "degraded": self._degraded,
+            "refreshing": self._refreshing,
         }
 
     # ---------------- 拼未完成K ----------------
@@ -140,4 +300,17 @@ class MarketDataPoller:
                 if c not in new_row.columns:
                     new_row[c] = None
             df = pd.concat([new_row[df.columns], df], ignore_index=True)
+        elif latest == today and quote.price > 0:
+            # 数据库已有当天K线时，用本次实时快照覆盖，避免使用盘初旧值。
+            first = df.index[0]
+            if "open" in df.columns and quote.open > 0:
+                df.at[first, "open"] = quote.open
+            if "high" in df.columns and quote.high > 0:
+                df.at[first, "high"] = quote.high
+            if "low" in df.columns and quote.low > 0:
+                df.at[first, "low"] = quote.low
+            if "close" in df.columns:
+                df.at[first, "close"] = quote.price
+            if "volume" in df.columns and quote.volume > 0:
+                df.at[first, "volume"] = quote.volume
         return df

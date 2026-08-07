@@ -144,7 +144,8 @@
           strategy,
           strength: stock.score ?? stock.signal_strength ?? signal.score ?? 0,
           win: stock.win_rate ?? signal.win_rate,
-          expected: stock.expected_return ?? signal.expected_return
+          expected: stock.expected_return ?? signal.expected_return,
+          reason: stock.reason || signal.reason || ''
         });
       });
     });
@@ -155,7 +156,7 @@
     if (heading) heading.querySelector('strong').innerHTML = `筛选结果预览 <span class="tag blue">${unique.length} 条</span>`;
     const list = $('.result-list', container);
     if (!list) return;
-    list.innerHTML = unique.length ? unique.map(item => `<div class="filter-result-row" data-name="${escapeHtml(item.name)}" data-code="${escapeHtml(item.code)}" data-sector="${escapeHtml(item.industry)}" data-search="${escapeHtml(`${item.name} ${item.code} ${item.industry}`)}" data-price="${Number(item.price || 0).toFixed(2)}" data-change="${Number(item.change || 0).toFixed(2)}" data-signal="${escapeHtml(item.strategy)}" data-strength="${Number(item.strength || 0)}" data-win="${item.win == null ? '' : Number(item.win).toFixed(1)}" data-return="${item.expected == null ? '' : Number(item.expected).toFixed(2)}"><div class="result-stock"><div><div class="stock-name">${escapeHtml(item.name)}</div><div class="stock-code">${escapeHtml(item.code)} · ${escapeHtml(item.industry)}</div></div></div><div class="result-signal">信号强度 <strong>${Number(item.strength || 0).toFixed(0)}</strong>${item.win == null ? '' : ` · 历史胜率 <strong>${Number(item.win).toFixed(1)}%</strong>`}</div><div class="result-actions"><select class="group-select result-group" aria-label="${escapeHtml(item.name)}分组">${groupOptions('待观察')}</select><button class="ghost-btn add-filter-stock"><i data-lucide="star"></i>加入自选</button></div></div>`).join('') : '<div class="stock-pool-empty">没有符合条件的股票</div>';
+    list.innerHTML = unique.length ? unique.map(item => `<div class="filter-result-row" data-name="${escapeHtml(item.name)}" data-code="${escapeHtml(item.code)}" data-sector="${escapeHtml(item.industry)}" data-search="${escapeHtml(`${item.name} ${item.code} ${item.industry}`)}" data-price="${Number(item.price || 0).toFixed(2)}" data-change="${Number(item.change || 0).toFixed(2)}" data-signal="${escapeHtml(item.strategy)}" data-strength="${Number(item.strength || 0)}" data-win="${item.win == null ? '' : Number(item.win).toFixed(1)}" data-return="${item.expected == null ? '' : Number(item.expected).toFixed(2)}"><div class="result-stock"><div><div class="stock-name">${escapeHtml(item.name)}</div><div class="stock-code">${escapeHtml(item.code)} · ${escapeHtml(item.industry)}</div>${item.reason ? `<div class="result-reason">${escapeHtml(item.reason)}</div>` : ''}</div></div><div class="result-signal">信号强度 <strong>${Number(item.strength || 0).toFixed(0)}</strong>${item.win == null ? '' : ` · 历史胜率 <strong>${Number(item.win).toFixed(1)}%</strong>`}</div><div class="result-actions"><select class="group-select result-group" aria-label="${escapeHtml(item.name)}分组">${groupOptions('待观察')}</select><button class="ghost-btn add-filter-stock"><i data-lucide="star"></i>加入自选</button></div></div>`).join('') : '<div class="stock-pool-empty">没有符合条件的股票</div>';
     refreshIcons();
   }
 
@@ -227,8 +228,8 @@
         body: JSON.stringify({ source })
       });
       renderScanResults({ '代码筛选': result.results || [] });
-      const unsupported = result.unsupported?.length ? `；未支持：${result.unsupported.join('、')}` : '';
-      toast(`后端筛选完成，命中 ${result.count || 0} 只股票${unsupported}`);
+      const incomplete = result.errors?.length ? `；${result.errors.length} 只因历史数据不足未纳入` : '';
+      toast(`后端筛选完成，全部条件已执行，命中 ${result.count || 0} 只股票${incomplete}`);
     } catch (error) {
       toast(`代码筛选失败：${error.message}`);
     }

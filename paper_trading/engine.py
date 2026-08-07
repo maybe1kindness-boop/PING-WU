@@ -10,9 +10,15 @@
 """
 from __future__ import annotations
 
+import csv
+import json
 import logging
-from typing import Any, Dict, List, Optional
+import re
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+from datetime import datetime, timedelta
 
+import pandas as pd
 import yaml
 
 from .account import PaperAccount
@@ -30,9 +36,10 @@ class PaperTradingEngine:
     def __init__(self, config_file: str = "config/config.yaml",
                  db_path: Optional[str] = None, timing_name: Optional[str] = None):
         # ---- 加载配置 ----
+        self.config_file = Path(config_file)
         self.khunter_config: Dict[str, Any] = {}
         try:
-            with open(config_file, "r", encoding="utf-8") as f:
+            with open(self.config_file, "r", encoding="utf-8") as f:
                 self.khunter_config = yaml.safe_load(f) or {}
         except FileNotFoundError:
             logger.warning(f"配置文件不存在: {config_file}，使用默认值")
@@ -54,10 +61,482 @@ class PaperTradingEngine:
         # ---- 辅助 ----
         self.calendar = TradeCalendar()
         self._db_manager = None
+        from .market_data_poller import MarketDataPoller
+        self._screen_poller = MarketDataPoller(self)
+        self._screen_poller.start_background_refresh(interval_sec=20.0)
         self._peak_value = max(self.account.total_value(), self.account.initial_capital)
         self._realtime_started = False
 
     # ---------------- 内部 ----------------
+    def update_strategy_config(
+        self,
+        timing_strategy: str,
+        selection_strategies: List[str],
+        max_position_pct: float,
+        max_total_position_pct: float,
+        max_hold_days: int,
+        take_profit: float,
+        stop_loss: float,
+    ) -> None:
+        """Apply desktop-edited strategy settings and persist them to YAML."""
+        paper = self.khunter_config.setdefault("paper_trading", {})
+        paper.update({
+            "timing_strategy": timing_strategy,
+            "selection_strategies": list(selection_strategies),
+            "max_position_pct": float(max_position_pct),
+            "max_total_position_pct": float(max_total_position_pct),
+            "max_hold_days": int(max_hold_days),
+            "take_profit": float(take_profit),
+            "stop_loss": float(stop_loss),
+        })
+        self.config = load_paper_config(self.khunter_config)
+        self.timing = self._create_timing(timing_strategy)
+        self.signal_engine.timing = self.timing
+        self.config_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.config_file, "w", encoding="utf-8") as handle:
+            yaml.safe_dump(
+                self.khunter_config,
+                handle,
+                allow_unicode=True,
+                sort_keys=False,
+                default_flow_style=False,
+            )
+
+    def screen_with_user_code(
+        self, source: str, max_stocks: Optional[int] = None,
+        progress_callback: Optional[Callable[[str], None]] = None,
+        force_refresh: bool = False,
+    ) -> Dict[str, Any]:
+        """Run a user-provided local matcher against the cached A-share data.
+
+        The source must define ``match_stock(df, code, name)`` and return a
+        boolean or a dict containing ``matched`` (or ``match``) and an optional
+        ``reason``. This is deliberately a screening-only API; it does not
+        create orders or mutate the paper account.
+        """
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError("筛选代码不能为空")
+        if len(source) > 100_000:
+            raise ValueError("筛选代码超过 100KB 限制")
+
+        natural_rules = self._parse_natural_rules(source)
+        if natural_rules is not None:
+            return self._screen_natural_rules(
+                natural_rules, max_stocks, progress_callback, force_refresh
+            )
+
+        namespace = {
+            "pd": pd,
+            "datetime": datetime,
+            "__name__": "khunter_user_screen",
+        }
+        try:
+            exec(compile(source, "<desktop-screen-code>", "exec"), namespace, namespace)
+        except Exception as exc:
+            raise ValueError(f"代码编译或加载失败: {exc}") from exc
+
+        matcher = namespace.get("match_stock") or namespace.get("select_stock")
+        if not callable(matcher):
+            raise ValueError("代码必须定义 match_stock(df, code, name) 函数")
+
+        codes = self.db_manager.list_all_stocks()
+        if max_stocks and max_stocks > 0:
+            codes = codes[:max_stocks]
+        names = (
+            self.db_manager.get_all_stock_names()
+            if hasattr(self.db_manager, "get_all_stock_names") else {}
+        )
+        results: List[Dict[str, Any]] = []
+        errors: List[Dict[str, str]] = []
+        for code in codes:
+            name = names.get(code, "")
+            try:
+                df = self.db_manager.read_stock(code)
+                if df is None or df.empty:
+                    continue
+                raw = matcher(df.copy(), code, name)
+                matched = False
+                reason = "命中自定义条件"
+                extra: Dict[str, Any] = {}
+                if isinstance(raw, dict):
+                    matched = bool(raw.get("matched", raw.get("match", raw.get("selected", False))))
+                    reason = str(raw.get("reason", reason))
+                    extra = {k: v for k, v in raw.items() if k not in {"matched", "match", "selected", "reason"}}
+                else:
+                    matched = bool(raw)
+                if matched:
+                    latest_price = float(df.iloc[0].get("close", 0) or 0)
+                    row = {"code": code, "name": name, "price": latest_price, "reason": reason}
+                    row.update(extra)
+                    results.append(row)
+            except Exception as exc:
+                errors.append({"code": str(code), "error": str(exc)})
+
+        return {
+            "results": results,
+            "processed": len(codes),
+            "errors": errors,
+        }
+
+    def _parse_natural_rules(self, source: str) -> Optional[Dict[str, Any]]:
+        """Parse the common Chinese rule syntax used by the desktop editor."""
+        if "def " in source or "import " in source or "return " in source:
+            return None
+        text = source.strip().replace("，", ",").replace("；", ",").replace("、", ",")
+        parts = [part.strip() for part in re.split(r"[,\n]+", text) if part.strip()]
+        if not parts:
+            return None
+        spec: Dict[str, Any] = {
+            "exclude_st": False,
+            "exclude_bj": False,
+            "exclude_star": False,
+            "price_max": None,
+            "amount_min": None,
+            "market_cap_max": None,
+            "limit_days": None,
+            "limit_count": None,
+        }
+        unsupported = []
+        for part in parts:
+            compact = part.replace(" ", "")
+            if compact.startswith("非ST") or "排除ST" in compact:
+                spec["exclude_st"] = True
+                continue
+            if compact.startswith("非北交") or "排除北交" in compact:
+                spec["exclude_bj"] = True
+                continue
+            if compact.startswith("非科创") or "排除科创" in compact:
+                spec["exclude_star"] = True
+                continue
+            match = re.search(r"股价(?:<|小于|低于)([0-9]+(?:\.[0-9]+)?)", compact)
+            if match:
+                spec["price_max"] = float(match.group(1))
+                continue
+            match = re.search(r"市值(?:<|小于|低于)([0-9]+(?:\.[0-9]+)?)(万亿|亿|万)?", compact)
+            if match:
+                spec["market_cap_max"] = self._parse_amount_value(match.group(1), match.group(2))
+                continue
+            match = re.search(r"(?:今日|当天)?成交额(?:>|大于|超过)([0-9]+(?:\.[0-9]+)?)(万亿|亿|万)?", compact)
+            if match:
+                spec["amount_min"] = self._parse_amount_value(match.group(1), match.group(2))
+                continue
+            match = re.search(r"近([0-9]+)(月|个月|个交易日|日)(?:至少)?([0-9]+)次涨停", compact)
+            if match:
+                period = int(match.group(1))
+                unit = match.group(2)
+                spec["limit_days"] = period * 22 if "月" in unit else period
+                spec["limit_count"] = int(match.group(3))
+                continue
+            unsupported.append(part)
+        if unsupported:
+            raise ValueError("无法识别的中文条件：" + "、".join(unsupported))
+        return spec
+
+    @staticmethod
+    def _parse_amount_value(number: str, unit: Optional[str]) -> float:
+        multiplier = {"万亿": 1e12, "亿": 1e8, "万": 1e4}.get(unit or "", 1.0)
+        return float(number) * multiplier
+
+    def _screen_natural_rules(
+        self, spec: Dict[str, Any], max_stocks: Optional[int],
+        progress_callback: Optional[Callable[[str], None]] = None,
+        force_refresh: bool = False,
+    ) -> Dict[str, Any]:
+        def report(message: str) -> None:
+            if progress_callback:
+                try:
+                    progress_callback(message)
+                except Exception:
+                    logger.debug("筛选进度回调失败", exc_info=True)
+
+        codes = self.db_manager.list_all_stocks()
+        if max_stocks and max_stocks > 0:
+            codes = codes[:max_stocks]
+        names = (
+            self.db_manager.get_all_stock_names()
+            if hasattr(self.db_manager, "get_all_stock_names") else {}
+        )
+        # 盘中口径：价格、成交额和总市值必须来自同一次实时快照。
+        poller = self._get_screen_poller()
+        report("正在获取实时行情...")
+        quotes = poller.fetch_all(
+            force=force_refresh,
+            max_age=float(getattr(self.config, "screen_quote_cache_sec", 30.0)),
+            fast=True,
+        )
+        report(f"实时行情完成（{len(quotes)} 只），正在计算筛选条件...")
+
+        # 涨停次数依赖历史K线。先按实时条件缩小范围，再批量刷新近期K线，
+        # 避免把实时快照和过期本地历史数据混在一起。
+        refresh_codes = codes
+        if spec["limit_count"] is not None:
+            refresh_codes = []
+            for code in codes:
+                name = names.get(code, "")
+                if spec["exclude_st"] and (name.startswith(("ST", "*ST")) or "ST" in name.upper()):
+                    continue
+                if spec["exclude_bj"] and str(code).startswith(("4", "8")):
+                    continue
+                if spec["exclude_star"] and str(code).startswith(("688", "689")):
+                    continue
+                quote = quotes.get(code)
+                if quote is None or quote.price <= 0:
+                    continue
+                if spec["price_max"] is not None and quote.price >= spec["price_max"]:
+                    continue
+                if spec["amount_min"] is not None and quote.amount <= spec["amount_min"]:
+                    continue
+                if spec["market_cap_max"] is not None and (
+                    quote.market_cap <= 0 or quote.market_cap >= spec["market_cap_max"]
+                ):
+                    continue
+                refresh_codes.append(code)
+            report(f"需要校验历史涨停的股票 {len(refresh_codes)} 只，正在检查本地 K 线...")
+            self._refresh_intraday_screen_history(
+                refresh_codes, days=max(40, int(spec["limit_days"] or 22) + 10)
+            )
+            report("历史 K 线准备完成，正在计算筛选结果...")
+
+        results = []
+        errors = []
+        needs_history = spec["limit_count"] is not None
+        for code in codes:
+            name = names.get(code, "")
+            try:
+                if spec["exclude_st"] and (name.startswith(("ST", "*ST")) or "ST" in name.upper()):
+                    continue
+                if spec["exclude_bj"] and str(code).startswith(("4", "8")):
+                    continue
+                if spec["exclude_star"] and str(code).startswith(("688", "689")):
+                    continue
+                quote = quotes.get(code)
+                if quote is None or quote.price <= 0:
+                    continue
+                price = float(quote.price)
+                checks = []
+                if spec["price_max"] is not None:
+                    checks.append(price < spec["price_max"])
+
+                if spec["market_cap_max"] is not None:
+                    # 同花顺盘中筛选按当前总市值判断，不回退到旧的本地市值。
+                    market_cap = float(quote.market_cap or 0)
+                    checks.append(market_cap > 0 and market_cap < spec["market_cap_max"])
+                else:
+                    market_cap = 0.0
+
+                if spec["amount_min"] is not None:
+                    # 同花顺盘中筛选按当前交易日成交额判断。
+                    amount = float(quote.amount or 0)
+                    checks.append(amount > spec["amount_min"])
+                else:
+                    amount = 0.0
+
+                limit_count = 0
+                if needs_history:
+                    df = self.db_manager.read_stock(code)
+                    if df is None or df.empty:
+                        continue
+                    latest_date = pd.Timestamp(df.iloc[0]["date"]).date()
+                    if latest_date < datetime.now().date() - timedelta(days=7):
+                        errors.append({
+                            "code": str(code),
+                            "error": f"历史K线未更新至近期交易日（最新 {latest_date}）",
+                        })
+                        continue
+                    intraday_df = poller.build_intraday_df(
+                        code, quote, tail_bars=int(spec["limit_days"] or 22) + 2
+                    )
+                    if intraday_df is not None and not intraday_df.empty:
+                        df = intraday_df
+                    closes = pd.to_numeric(df["close"], errors="coerce")
+                    limit_flags = []
+                    for idx in range(min(int(spec["limit_days"]), len(closes) - 1)):
+                        current = closes.iloc[idx]
+                        previous = closes.iloc[idx + 1]
+                        limit_flags.append(
+                            self._is_limit_up(code, name, current, previous)
+                        )
+                    limit_count = sum(limit_flags)
+                    checks.append(limit_count >= spec["limit_count"])
+                # Exclusion-only rules still select every stock that survived
+                # the exclusions. Numeric/history rules append their checks.
+                if not checks or all(checks):
+                    results.append({
+                        "code": code,
+                        "name": name,
+                        "price": round(price, 2),
+                        "reason": f"命中中文规则；成交额={amount / 1e8:.2f}亿，市值={market_cap / 1e8:.2f}亿，近段涨停={limit_count}次",
+                    })
+            except Exception as exc:
+                errors.append({"code": str(code), "error": str(exc)})
+        return {"results": results, "processed": len(codes), "errors": errors}
+
+    def _get_screen_poller(self):
+        """Reuse one poller so repeated desktop screens can share its cache."""
+        if self._screen_poller is None:
+            from .market_data_poller import MarketDataPoller
+            self._screen_poller = MarketDataPoller(self)
+        return self._screen_poller
+
+    def _refresh_intraday_screen_history(self, codes: List[str], days: int) -> None:
+        """Refresh recent K-lines in batches before an intraday screen."""
+        if not codes:
+            return
+        try:
+            from utils.akshare_fetcher import AKShareFetcher
+
+            latest_dates = self._get_latest_kline_dates(codes)
+            cutoff = datetime.now().date() - timedelta(days=7)
+            stale_codes = []
+            for code in codes:
+                latest = latest_dates.get(str(code))
+                try:
+                    latest_date = pd.Timestamp(latest).date() if latest else None
+                except (TypeError, ValueError):
+                    latest_date = None
+                if latest_date is None or latest_date < cutoff:
+                    stale_codes.append(code)
+            if not stale_codes:
+                logger.info("盘中筛选K线已足够新，跳过网络刷新: %s 只", len(codes))
+                return
+
+            fetcher = AKShareFetcher()
+            batch_size = 100
+            refreshed = 0
+            for start in range(0, len(stale_codes), batch_size):
+                batch = stale_codes[start:start + batch_size]
+                data, _ = fetcher.kline_fetcher._fetch_kline_tickflow_batch(
+                    batch, days=days
+                )
+                if data:
+                    fetcher.kline_fetcher._batch_update_kline_to_db(data)
+                refreshed += len(data)
+            logger.info(
+                "盘中筛选K线刷新完成: 检查=%s, 请求=%s, 成功=%s, 天数=%s",
+                len(codes), len(stale_codes), refreshed, days,
+            )
+        except Exception as exc:
+            logger.warning("盘中筛选K线刷新失败: %s", exc)
+
+    def _get_latest_kline_dates(self, codes: List[str]) -> Dict[str, Any]:
+        """Read latest dates in one query instead of opening one query per stock."""
+        if not codes:
+            return {}
+        latest: Dict[str, Any] = {}
+        for start in range(0, len(codes), 900):
+            batch = [str(code) for code in codes[start:start + 900]]
+            placeholders = ",".join("?" for _ in batch)
+            rows = self.db_manager.query(
+                "SELECT code, MAX(date) AS latest_date "
+                f"FROM stock_kline WHERE code IN ({placeholders}) GROUP BY code",
+                tuple(batch),
+            )
+            latest.update({str(row["code"]): row.get("latest_date") for row in rows})
+        return latest
+
+    @staticmethod
+    def _is_limit_up(code: str, name: str, current: Any, previous: Any) -> bool:
+        """Use board-specific rounded limit prices for intraday limit-up counts."""
+        try:
+            current_price = float(current)
+            previous_price = float(previous)
+        except (TypeError, ValueError):
+            return False
+        if current_price <= 0 or previous_price <= 0:
+            return False
+        upper = str(name or "").upper()
+        if upper.startswith(("ST", "*ST")) or "ST" in upper:
+            rate = 0.05
+        elif str(code).startswith(("300", "301", "688", "689")):
+            rate = 0.20
+        elif str(code).startswith(("4", "8")):
+            rate = 0.30
+        else:
+            rate = 0.10
+        limit_price = round(previous_price * (1 + rate) + 1e-8, 2)
+        return current_price >= limit_price - 0.001
+
+    def save_custom_screen_results(self, results: List[Dict[str, Any]]) -> str:
+        """Persist the latest desktop code-screen results as a CSV file."""
+        output_dir = self.config_file.parent.parent / "runtime" / "data" / "running"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output = output_dir / f"custom_screen_{datetime.now():%Y%m%d_%H%M%S}.csv"
+        fields = ["code", "name", "price", "reason"]
+        with open(output, "w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(results)
+        return str(output)
+
+    def list_watchlist_groups(self) -> List[Dict[str, Any]]:
+        return self.dao.list_watchlist_groups()
+
+    def add_to_watchlist(self, group_name: str,
+                         items: List[Dict[str, Any]]) -> int:
+        return self.dao.add_watchlist_items(group_name, items)
+
+    def get_watchlist_items(self, group_name: str) -> List[Dict[str, Any]]:
+        return self.dao.get_watchlist_items(group_name)
+
+    def _user_strategy_store(self) -> Path:
+        path = self.config_file.parent.parent / "runtime" / "data" / "user_screen_strategies.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def list_user_screen_strategies(self) -> List[Dict[str, Any]]:
+        path = self._user_strategy_store()
+        if not path.exists():
+            return []
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            if not isinstance(payload, list):
+                return []
+            return [item for item in payload if isinstance(item, dict) and item.get("name")]
+        except (OSError, ValueError, TypeError):
+            return []
+
+    def save_user_screen_strategy(
+        self, name: str, source: str, max_stocks: Optional[int]
+    ) -> Dict[str, Any]:
+        name = str(name or "").strip()
+        if not name:
+            raise ValueError("策略名称不能为空")
+        if len(name) > 80:
+            raise ValueError("策略名称不能超过80个字符")
+        if not str(source or "").strip():
+            raise ValueError("策略内容不能为空")
+        strategies = self.list_user_screen_strategies()
+        record = {
+            "name": name,
+            "source": str(source),
+            "max_stocks": int(max_stocks or 0),
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        strategies = [item for item in strategies if item.get("name") != name]
+        strategies.append(record)
+        path = self._user_strategy_store()
+        temp = path.with_suffix(path.suffix + ".tmp")
+        with open(temp, "w", encoding="utf-8") as handle:
+            json.dump(strategies, handle, ensure_ascii=False, indent=2)
+        temp.replace(path)
+        return record
+
+    def load_user_screen_strategy(self, name: str) -> Dict[str, Any]:
+        for item in self.list_user_screen_strategies():
+            if item.get("name") == name:
+                return item
+        raise KeyError(f"找不到保存的策略: {name}")
+
+    def delete_user_screen_strategy(self, name: str) -> None:
+        strategies = [
+            item for item in self.list_user_screen_strategies()
+            if item.get("name") != name
+        ]
+        path = self._user_strategy_store()
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(strategies, handle, ensure_ascii=False, indent=2)
+
     @property
     def db_manager(self):
         if self._db_manager is None:

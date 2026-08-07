@@ -855,7 +855,8 @@ class QuantPilotDesktopWindow(QMainWindow):
 
         def serve():
             try:
-                from web_server import run_web_server
+                from web_server import configure_quantpilot_engine, run_web_server
+                configure_quantpilot_engine(self.engine)
                 run_web_server(host="127.0.0.1", port=5001, debug=False)
             except Exception:
                 logger.exception("QuantPilot 桌面端后端启动失败")

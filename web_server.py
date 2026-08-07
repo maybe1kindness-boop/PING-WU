@@ -173,6 +173,11 @@ ranking_manager = RankingManager()
 stock_analyzer = StockAnalyzer()
 data_collection_service = get_data_collection_service(get_data_dir())
 
+# The desktop shell passes its PaperTradingEngine here so code screening uses
+# the same quote cache and history services as the rest of the client. The
+# standalone web command creates one lazily on the first screening request.
+quantpilot_screen_engine = None
+
 # 初始化K线初始化器
 from utils.akshare_fetcher import AKShareFetcher
 akshare_fetcher = AKShareFetcher(get_data_dir())
@@ -370,64 +375,42 @@ def create_quantpilot_group():
 
 @app.route('/api/quantpilot/code-screen', methods=['POST'])
 def quantpilot_code_screen():
-    """执行 QuantPilot 代码筛选，并明确返回当前数据源无法支持的条件。"""
+    """Execute the same code-screening engine used by the desktop dialog."""
+    global quantpilot_screen_engine
     try:
         payload = request.get_json() or {}
         source = str(payload.get('source', '')).strip()
         if not source:
             return jsonify({'success': False, 'error': '筛选代码不能为空'}), 400
 
-        price_match = __import__('re').search(r'股价\s*[<＜]\s*(\d+(?:\.\d+)?)', source)
-        price_limit = float(price_match.group(1)) if price_match else None
-        exclude_st = '非st' in source.lower() or '剔除 st' in source.lower()
-        exclude_kc = '非科创' in source or '剔除科创' in source
-        exclude_bj = '非北交' in source or '剔除北交' in source
-        unsupported = []
-        if '成交额' in source:
-            unsupported.append('成交额条件需要接入实时成交额数据')
-        if '市值' in source:
-            unsupported.append('市值条件需要补充股票基础资料市值字段')
-        if '涨停' in source:
-            unsupported.append('涨停次数条件需要补充历史涨停统计')
+        if quantpilot_screen_engine is None:
+            from paper_trading.engine import PaperTradingEngine
+            quantpilot_screen_engine = PaperTradingEngine(config_file='config/config.yaml')
 
-        rows = db_manager.query('''
-            SELECT b.code, b.name, b.industry,
-                   (SELECT k.close FROM stock_kline k
-                    WHERE k.code = b.code ORDER BY k.date DESC LIMIT 1) AS price,
-                   (SELECT k.date FROM stock_kline k
-                    WHERE k.code = b.code ORDER BY k.date DESC LIMIT 1) AS quote_date
-            FROM stock_basic b
-            ORDER BY b.code
-        ''')
+        max_stocks = payload.get('max_stocks')
+        max_stocks = int(max_stocks) if max_stocks else None
+        screen = quantpilot_screen_engine.screen_with_user_code(
+            source,
+            max_stocks=max_stocks,
+            force_refresh=bool(payload.get('force_refresh', False)),
+        )
         results = []
-        for row in rows:
-            code = str(row.get('code', '')).zfill(6)
-            name = str(row.get('name') or code)
-            price = row.get('price')
-            if exclude_st and 'st' in name.lower():
-                continue
-            if exclude_kc and code.startswith('688'):
-                continue
-            if exclude_bj and (code.startswith('8') or code.startswith('4')):
-                continue
-            if price_limit is not None and (price is None or float(price) >= price_limit):
-                continue
+        for item in screen.get('results', []):
             results.append({
-                'code': code,
-                'name': name,
-                'industry': row.get('industry') or '未分类',
-                'price': float(price or 0),
-                'change': 0,
-                'score': 0,
-                'signals': [],
-                'quote_date': row.get('quote_date')
+                **item,
+                'industry': item.get('industry') or '未分类',
+                'change': item.get('change', 0),
+                'score': item.get('score', 0),
+                'signals': item.get('signals', []),
             })
-
         return jsonify({'success': True, 'data': {
             'results': results[:500],
             'count': len(results),
-            'unsupported': unsupported,
-            'source': source
+            'processed': screen.get('processed', 0),
+            'errors': screen.get('errors', []),
+            'source': source,
+            'conditions_enforced': True,
+            'data_source': '实时行情 + 本地历史K线',
         }})
     except Exception as exc:
         logger.exception('QuantPilot 代码筛选失败')
@@ -4412,6 +4395,12 @@ def ignore_trade():
     except Exception as e:
         logger.error(f"忽略信号失败: {str(e)}")
         return jsonify({"success": False, "error": str(e)})
+
+
+def configure_quantpilot_engine(engine):
+    """Use the already-running desktop engine for QuantPilot API requests."""
+    global quantpilot_screen_engine
+    quantpilot_screen_engine = engine
 
 
 def run_web_server(host='0.0.0.0', port=5000, debug=False):
