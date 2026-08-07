@@ -368,6 +368,72 @@ def create_quantpilot_group():
     return jsonify({'success': True, 'data': {'name': name}})
 
 
+@app.route('/api/quantpilot/code-screen', methods=['POST'])
+def quantpilot_code_screen():
+    """执行 QuantPilot 代码筛选，并明确返回当前数据源无法支持的条件。"""
+    try:
+        payload = request.get_json() or {}
+        source = str(payload.get('source', '')).strip()
+        if not source:
+            return jsonify({'success': False, 'error': '筛选代码不能为空'}), 400
+
+        price_match = __import__('re').search(r'股价\s*[<＜]\s*(\d+(?:\.\d+)?)', source)
+        price_limit = float(price_match.group(1)) if price_match else None
+        exclude_st = '非st' in source.lower() or '剔除 st' in source.lower()
+        exclude_kc = '非科创' in source or '剔除科创' in source
+        exclude_bj = '非北交' in source or '剔除北交' in source
+        unsupported = []
+        if '成交额' in source:
+            unsupported.append('成交额条件需要接入实时成交额数据')
+        if '市值' in source:
+            unsupported.append('市值条件需要补充股票基础资料市值字段')
+        if '涨停' in source:
+            unsupported.append('涨停次数条件需要补充历史涨停统计')
+
+        rows = db_manager.query('''
+            SELECT b.code, b.name, b.industry,
+                   (SELECT k.close FROM stock_kline k
+                    WHERE k.code = b.code ORDER BY k.date DESC LIMIT 1) AS price,
+                   (SELECT k.date FROM stock_kline k
+                    WHERE k.code = b.code ORDER BY k.date DESC LIMIT 1) AS quote_date
+            FROM stock_basic b
+            ORDER BY b.code
+        ''')
+        results = []
+        for row in rows:
+            code = str(row.get('code', '')).zfill(6)
+            name = str(row.get('name') or code)
+            price = row.get('price')
+            if exclude_st and 'st' in name.lower():
+                continue
+            if exclude_kc and code.startswith('688'):
+                continue
+            if exclude_bj and (code.startswith('8') or code.startswith('4')):
+                continue
+            if price_limit is not None and (price is None or float(price) >= price_limit):
+                continue
+            results.append({
+                'code': code,
+                'name': name,
+                'industry': row.get('industry') or '未分类',
+                'price': float(price or 0),
+                'change': 0,
+                'score': 0,
+                'signals': [],
+                'quote_date': row.get('quote_date')
+            })
+
+        return jsonify({'success': True, 'data': {
+            'results': results[:500],
+            'count': len(results),
+            'unsupported': unsupported,
+            'source': source
+        }})
+    except Exception as exc:
+        logger.exception('QuantPilot 代码筛选失败')
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
 @app.route('/api/stocks')
 def get_stocks():
     """获取股票列表 - 从 stock_basic 表获取基础数据"""

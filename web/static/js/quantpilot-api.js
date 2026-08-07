@@ -109,7 +109,7 @@
       const favorite = item.favorite !== false;
       return `<tr data-code="${escapeHtml(item.code)}" data-favorite="${favorite}" data-group="${escapeHtml(item.group || '待观察')}" data-strategy="${escapeHtml(item.strategy || '')}" data-search="${escapeHtml(`${item.name || ''} ${item.code || ''} ${item.industry || ''}`)}"><td><div class="stock-cell"><button class="stock-star ${favorite ? 'active' : ''}" title="${favorite ? '取消自选' : '加入自选'}"><i data-lucide="star"></i></button><div><div class="stock-name">${escapeHtml(item.name || item.code)}</div><div class="stock-code">${escapeHtml(item.code)} · ${escapeHtml(item.industry || '未分类')}</div><span class="stock-group">${escapeHtml(item.group || '待观察')}</span></div></div></td><td class="price">${Number(item.price || 0).toFixed(2)}</td><td class="${change < 0 ? 'down' : 'up'}">${formatPercent(change)}</td><td><span class="tag ${String(item.strategy || '').includes('回踩') ? 'orange' : 'green'}">${escapeHtml(item.strategy || '观察中')}</span></td><td><span class="${strength >= 70 ? 'up' : ''}">${strength ? `${strength >= 85 ? '强' : '中'} · ${strength}` : '--'}</span></td><td>${item.win_rate ? `${Number(item.win_rate).toFixed(1)}%` : '--'}</td><td class="up">${item.expected_return == null ? '--' : formatPercent(item.expected_return)}</td><td><select class="row-group" aria-label="${escapeHtml(item.name || item.code)}分组">${groupOptions(item.group || '待观察')}</select></td><td><button class="icon-btn row-detail" title="查看详情"><i data-lucide="arrow-up-right"></i></button></td></tr>`;
     }).join('');
-    table.innerHTML = rows || '<tr><td colspan="10" class="stock-pool-empty">暂无自选股，请从筛选结果加入</td></tr>';
+    table.innerHTML = rows || '<tr data-search=""><td colspan="10" class="stock-pool-empty">暂无自选股，请从筛选结果加入</td></tr>';
     setText('watchCount', state.watchlist.filter(item => item.favorite !== false).length);
     setText('tableResult', `显示 ${state.watchlist.length} / ${state.watchlist.length} 只股票 · 数据来自后端`);
     refreshIcons();
@@ -155,7 +155,7 @@
     if (heading) heading.querySelector('strong').innerHTML = `筛选结果预览 <span class="tag blue">${unique.length} 条</span>`;
     const list = $('.result-list', container);
     if (!list) return;
-    list.innerHTML = unique.length ? unique.map(item => `<div class="filter-result-row" data-name="${escapeHtml(item.name)}" data-code="${escapeHtml(item.code)}" data-sector="${escapeHtml(item.industry)}" data-price="${Number(item.price || 0).toFixed(2)}" data-change="${Number(item.change || 0).toFixed(2)}" data-signal="${escapeHtml(item.strategy)}" data-strength="${Number(item.strength || 0)}" data-win="${item.win == null ? '' : Number(item.win).toFixed(1)}" data-return="${item.expected == null ? '' : Number(item.expected).toFixed(2)}"><div class="result-stock"><div><div class="stock-name">${escapeHtml(item.name)}</div><div class="stock-code">${escapeHtml(item.code)} · ${escapeHtml(item.industry)}</div></div></div><div class="result-signal">信号强度 <strong>${Number(item.strength || 0).toFixed(0)}</strong>${item.win == null ? '' : ` · 历史胜率 <strong>${Number(item.win).toFixed(1)}%</strong>`}</div><div class="result-actions"><select class="group-select result-group" aria-label="${escapeHtml(item.name)}分组">${groupOptions('待观察')}</select><button class="ghost-btn add-filter-stock"><i data-lucide="star"></i>加入自选</button></div></div>`).join('') : '<div class="stock-pool-empty">没有符合条件的股票</div>';
+    list.innerHTML = unique.length ? unique.map(item => `<div class="filter-result-row" data-name="${escapeHtml(item.name)}" data-code="${escapeHtml(item.code)}" data-sector="${escapeHtml(item.industry)}" data-search="${escapeHtml(`${item.name} ${item.code} ${item.industry}`)}" data-price="${Number(item.price || 0).toFixed(2)}" data-change="${Number(item.change || 0).toFixed(2)}" data-signal="${escapeHtml(item.strategy)}" data-strength="${Number(item.strength || 0)}" data-win="${item.win == null ? '' : Number(item.win).toFixed(1)}" data-return="${item.expected == null ? '' : Number(item.expected).toFixed(2)}"><div class="result-stock"><div><div class="stock-name">${escapeHtml(item.name)}</div><div class="stock-code">${escapeHtml(item.code)} · ${escapeHtml(item.industry)}</div></div></div><div class="result-signal">信号强度 <strong>${Number(item.strength || 0).toFixed(0)}</strong>${item.win == null ? '' : ` · 历史胜率 <strong>${Number(item.win).toFixed(1)}%</strong>`}</div><div class="result-actions"><select class="group-select result-group" aria-label="${escapeHtml(item.name)}分组">${groupOptions('待观察')}</select><button class="ghost-btn add-filter-stock"><i data-lucide="star"></i>加入自选</button></div></div>`).join('') : '<div class="stock-pool-empty">没有符合条件的股票</div>';
     refreshIcons();
   }
 
@@ -213,6 +213,30 @@
     refreshIcons();
   }
 
+  async function runCodeScreen() {
+    const source = $('#codeFilter')?.value.trim();
+    if (!source) return toast('请先编写筛选代码');
+    const button = $('#runCode');
+    if (!button) return;
+    button.disabled = true;
+    button.innerHTML = '<i data-lucide="loader-circle"></i>执行中';
+    refreshIcons();
+    try {
+      const result = await api('/api/quantpilot/code-screen', {
+        method: 'POST',
+        body: JSON.stringify({ source })
+      });
+      renderScanResults({ '代码筛选': result.results || [] });
+      const unsupported = result.unsupported?.length ? `；未支持：${result.unsupported.join('、')}` : '';
+      toast(`后端筛选完成，命中 ${result.count || 0} 只股票${unsupported}`);
+    } catch (error) {
+      toast(`代码筛选失败：${error.message}`);
+    }
+    button.disabled = false;
+    button.innerHTML = '<i data-lucide="play"></i>运行代码';
+    refreshIcons();
+  }
+
   async function runBacktest() {
     const strategy = state.selectedStrategies[0] || state.strategies[0]?.name || state.strategies[0]?.display_name;
     const start = $('#backtestStart')?.value;
@@ -259,6 +283,8 @@
     refresh?.addEventListener('click', async () => { refresh.classList.add('loading'); await loadData(); refresh.classList.remove('loading'); toast('数据已刷新'); });
     const scan = replaceHandler('runScan');
     scan?.addEventListener('click', runScan);
+    const runCode = replaceHandler('runCode');
+    runCode?.addEventListener('click', runCodeScreen);
     const backtest = replaceHandler('runBacktest');
     backtest?.addEventListener('click', runBacktest);
     const addStock = replaceHandler('addStockBtn');
